@@ -1,0 +1,36 @@
+{
+  "topology_routes": [
+    {
+      "id": "route-1",
+      "name": "HK -> US Line",
+      "nodes": ["client", "transit-hk", "landing-us", "internet"]
+    },
+    {
+      "id": "route-2",
+      "name": "HK -> SG Line",
+      "nodes": ["client", "transit-hk", "landing-sg", "internet"]
+    },
+    {
+      "id": "route-3",
+      "name": "JP -> US Line",
+      "nodes": ["client", "transit-jp", "landing-us", "internet"]
+    },
+    {
+      "id": "route-4",
+      "name": "JP -> SG Line",
+      "nodes": ["client", "transit-jp", "landing-sg", "internet"]
+    }
+  ],
+  "node_metadata": {
+    "client": { "name": "Local (Shanghai)", "role": "client" },
+    "internet": { "name": "Global Internet", "role": "target" },
+    "transit-hk": { "name": "Transit HK", "role": "transit" },
+    "transit-jp": { "name": "Transit JP", "role": "transit" },
+    "landing-us": { "name": "Landing US", "role": "landing" },
+    "landing-sg": { "name": "Landing SG", "role": "landing" }
+  },
+  "latency_tasks": {
+    "transit-jp->landing-us": "tcping-上海电信",
+    "transit-hk->landing-sg": "ping-上海联通"
+  }
+}

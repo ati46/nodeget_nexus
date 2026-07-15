@@ -1,0 +1,10 @@
+{
+  "api_url": "/",
+  "api_token": "YOUR_TOKEN_HERE",
+  "topology_routes": [
+    {
+      "id": "route-1",
+      "nodes": ["client", "fc8b3741", "1f2daed0", "internet"]
+    }
+  ]
+}
