@@ -5,7 +5,7 @@ import NodeDetailModal from './components/NodeDetailModal';
 import GlobalNetworkPanel from './components/GlobalNetworkPanel';
 import GlobalLatencyPanel from './components/GlobalLatencyPanel';
 import { Activity, Grid, Loader2 } from 'lucide-react';
-import { initApi, fetchAgentMetadata, fetchStaticData, fetchDynamicData, fetchFrontendConfig, fetchTaskLatencies, fetch24hTaskHistory } from './apiClient';
+import { initApi, fetchAgentMetadata, fetchStaticData, fetchDynamicData, fetchFrontendConfig, fetchTaskLatencies, fetch24hTaskHistory, fetchAllAgentUuids } from './apiClient';
 import { transformData } from './dataTransformer';
 import './index.css';
 
@@ -63,6 +63,11 @@ const App = () => {
             if (n !== 'client' && n !== 'internet') uuids.add(n);
           });
         });
+        
+        // Dynamically fetch ALL active agents from the backend, so Server Grid shows all assets (even if not in topology)
+        const allAgents = await fetchAllAgentUuids();
+        allAgents.forEach(u => uuids.add(u));
+
         const uuidList = Array.from(uuids);
 
         // Fetch Metadata (Names) and Static Data (OS/CPU)

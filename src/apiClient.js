@@ -194,6 +194,20 @@ export const fetchFrontendConfig = async () => {
   }
 };
 
+// 4.5 Fetch All Agent UUIDs (Dynamic Discovery)
+export const fetchAllAgentUuids = async () => {
+  try {
+    const res = await rpcCall('nodeget-server_list_all_agent_uuid', {});
+    if (res && Array.isArray(res.uuids)) {
+      return res.uuids.filter(isValidUuid);
+    }
+    return [];
+  } catch (e) {
+    console.warn("Failed to fetch all agents dynamically:", e);
+    return [];
+  }
+};
+
 // 5. Fetch Latency from Task Query
 export const fetchTaskLatencies = async (latencyMapping) => {
   if (!latencyMapping) return {};
