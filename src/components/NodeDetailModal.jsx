@@ -1,73 +1,42 @@
-import React, { useEffect, useState } from 'react';
-import { X, Activity } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { fetchNodeTaskHistory } from '../apiClient';
+import React, { useEffect, useRef } from 'react';
+import { Activity, ArrowDown, ArrowUp, Cpu, HardDrive, MemoryStick, Network, X } from 'lucide-react';
+import { formatBytes, formatSpeed } from '../dataTransformer';
 import GlobalLatencyPanel from './GlobalLatencyPanel';
 
-const NodeDetailModal = ({ agent, onClose }) => {
-  const [historyData, setHistoryData] = useState(null);
+const DetailMetric = ({ icon: Icon, label, value, detail }) => (
+  <article className="detail-metric"><Icon size={17} /><span>{label}</span><strong>{value}</strong><small>{detail}</small></article>
+);
 
+const NodeDetailModal = ({ agent, historyData, onClose }) => {
+  const closeRef = useRef(null);
   useEffect(() => {
-    if (!agent) return;
-    
-    // Prevent body scroll
+    // [CAUTION] Global document state mutation; always restored on close.
+    const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    
-    const loadHistory = async () => {
-      const data = await fetchNodeTaskHistory(agent.id);
-      setHistoryData(data);
-    };
-    loadHistory();
-    
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [agent]);
-
+    closeRef.current?.focus();
+    const handleKeyDown = (event) => { if (event.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => { document.body.style.overflow = previousOverflow; window.removeEventListener('keydown', handleKeyDown); };
+  }, [onClose]);
   if (!agent) return null;
-
+  const ramPercent = agent.ram_total ? Math.round((agent.ram_used / agent.ram_total) * 100) : 0;
+  const diskPercent = agent.disk_total ? Math.round((agent.disk_used / agent.disk_total) * 100) : 0;
   return (
-    <div className="modal-overlay" onClick={onClose} style={{ backdropFilter: 'blur(10px)' }}>
-      <div className="glass-card modal-content custom-scrollbar" onClick={e => e.stopPropagation()} style={{ width: '1000px', maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto', overflowX: 'hidden', backgroundColor: 'var(--bg-card)', backdropFilter: 'blur(30px)', border: '1px solid var(--glass-border)', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', borderBottom: '1px solid var(--glass-border)', paddingBottom: '1rem', position: 'sticky', top: 0, backgroundColor: 'var(--bg-card)', zIndex: 10 }}>
-          <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Activity color="var(--accent-cyan)"/> {agent.name}
-          </h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
-            <X size={24} />
-          </button>
-        </div>
-
-        <div style={{ marginTop: '1rem' }}>
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-            <p><strong>UUID:</strong> {agent.id.substring(0,8)}...</p>
-            <p><strong>系统:</strong> {agent.os}</p>
-            <p><strong>CPU:</strong> {agent.cpuBrand}</p>
-            <p><strong>运行时长:</strong> {agent.uptime}</p>
-            <p><strong>入站总计:</strong> {(agent.net_rx_total / 1024 / 1024 / 1024).toFixed(2)} GiB</p>
-            <p><strong>出站总计:</strong> {(agent.net_tx_total / 1024 / 1024 / 1024).toFixed(2)} GiB</p>
+    <div className="modal-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section className="node-drawer" role="dialog" aria-modal="true" aria-labelledby="node-detail-title">
+        <header className="drawer-header"><div><p className="eyebrow">AGENT DETAIL</p><h2 id="node-detail-title"><i className={`node-status ${agent.status}`} />{agent.name}</h2><p>{agent.id}</p></div><button ref={closeRef} type="button" className="icon-button" onClick={onClose} aria-label="关闭节点详情"><X size={20} /></button></header>
+        <div className="drawer-body">
+          <div className="detail-grid">
+            <DetailMetric icon={Cpu} label="CPU" value={`${agent.cpu}%`} detail={agent.cpuBrand} />
+            <DetailMetric icon={MemoryStick} label="内存" value={`${ramPercent}%`} detail={`${agent.ram_used} / ${agent.ram_total} MiB`} />
+            <DetailMetric icon={HardDrive} label="磁盘" value={`${diskPercent}%`} detail={`${(agent.disk_used / 1024).toFixed(1)} / ${(agent.disk_total / 1024).toFixed(1)} GiB`} />
+            <DetailMetric icon={Activity} label="系统负载" value={agent.load} detail={agent.uptime} />
+            <DetailMetric icon={ArrowDown} label="实时入站" value={formatSpeed(agent.net_rx_speed)} detail={formatBytes(agent.net_rx_total)} />
+            <DetailMetric icon={ArrowUp} label="实时出站" value={formatSpeed(agent.net_tx_speed)} detail={formatBytes(agent.net_tx_total)} />
           </div>
-          
-          <div style={{ marginTop: '2rem', minHeight: '200px' }}>
-            {historyData ? (
-              Object.keys(historyData).length > 0 ? (
-                <div style={{ margin: '-2rem' }}>
-                  <GlobalLatencyPanel historyData={historyData} hideTitle={true} />
-                </div>
-              ) : (
-                <div style={{ height: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                  无拨测数据 (No Ping Data)
-                </div>
-              )
-            ) : (
-              <div style={{ height: '200px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem', color: 'var(--text-muted)' }}>
-                <div className="spin"><Activity size={32} color="var(--accent-cyan)" /></div>
-                <div>加载中... (Loading)</div>
-              </div>
-            )}
-          </div>
+          <section className="drawer-section"><div className="drawer-section-title"><Network size={16} /><h3>线路拨测历史</h3></div>{historyData && Object.keys(historyData).length ? <GlobalLatencyPanel historyData={historyData} hideTitle /> : <div className="quiet-state"><Activity size={22} /><strong>暂无历史拨测</strong></div>}</section>
         </div>
-      </div>
+      </section>
     </div>
   );
 };

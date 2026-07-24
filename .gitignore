@@ -11,6 +11,15 @@ node_modules
 dist
 dist-ssr
 *.local
+*.local.json
+config.local.json
+public/config.local.json
+STATE_*.md
+.env
+.env.*
+*.pem
+*.key
+*.crt
 
 # Editor directories and files
 .vscode/*

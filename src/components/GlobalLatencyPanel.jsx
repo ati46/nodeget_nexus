@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { Activity, Radio, AlertTriangle } from 'lucide-react';
-import { ComposedChart, Line, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import { Activity, X } from 'lucide-react';
+import { ComposedChart, Line, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 // Aggregates raw history records into time buckets for the chart
 const aggregateHistory = (historyData, timeWindowHours = 24) => {
@@ -105,7 +105,7 @@ const COLORS = [
   '#a855f7' // purple
 ];
 
-const GlobalLatencyPanel = ({ historyData, hideTitle }) => {
+const GlobalLatencyPanel = ({ historyData, hideTitle, selectedSource, onClearSource }) => {
   const [timeWindow, setTimeWindow] = useState(1); // Default to 1 hour
   
   const { chartData, stats, sources } = useMemo(() => {
@@ -114,6 +114,7 @@ const GlobalLatencyPanel = ({ historyData, hideTitle }) => {
 
   if (!sources || sources.length === 0) return null;
 
+  const hasSelectedSource = Boolean(selectedSource && sources.includes(selectedSource));
   const tcpingSources = sources.filter(s => s.toLowerCase().includes('tcp'));
   const pingSources = sources.filter(s => !s.toLowerCase().includes('tcp'));
 
@@ -137,30 +138,38 @@ const GlobalLatencyPanel = ({ historyData, hideTitle }) => {
               />
               
               {/* Render Lines */}
-              {chartSources.map((src, idx) => (
+              {chartSources.map((src) => {
+                const isFocused = !hasSelectedSource || selectedSource === src;
+                return (
                 <Line 
                   key={`line_${src}`}
                   type="monotone" 
                   dataKey={src} 
                   name={src}
                   stroke={COLORS[sources.indexOf(src) % COLORS.length]} 
-                  strokeWidth={2}
+                  strokeWidth={isFocused ? 3 : 1}
+                  strokeOpacity={isFocused ? 1 : 0.14}
                   dot={false}
-                  activeDot={{ r: 4 }}
+                  activeDot={isFocused ? { r: 5 } : false}
                   connectNulls={false}
                 />
-              ))}
+                );
+              })}
 
               {/* Render Loss Spikes */}
-              {chartSources.map((src, idx) => (
+              {chartSources.map((src) => {
+                const isFocused = !hasSelectedSource || selectedSource === src;
+                return (
                 <Bar 
                   key={`bar_${src}`}
                   dataKey={`${src}_loss`}
                   name={`${src} 丢包`}
                   fill="var(--accent-rose)"
+                  fillOpacity={isFocused ? 0.8 : 0.08}
                   barSize={2}
                 />
-              ))}
+                );
+              })}
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -174,8 +183,9 @@ const GlobalLatencyPanel = ({ historyData, hideTitle }) => {
           
           {chartSources.map((src) => {
             const s = stats[src];
+            const isSelected = hasSelectedSource && selectedSource === src;
             return (
-              <div key={src} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: '1rem', alignItems: 'center', padding: '0.5rem 0', color: 'var(--text-primary)', fontSize: '0.9rem' }}>
+              <div className={`latency-stat-row ${isSelected ? 'is-selected' : hasSelectedSource ? 'is-dimmed' : ''}`} key={src} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: '1rem', alignItems: 'center', padding: '0.5rem', color: 'var(--text-primary)', fontSize: '0.9rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: COLORS[sources.indexOf(src) % COLORS.length] }}></div>
                   {src}
@@ -201,24 +211,32 @@ const GlobalLatencyPanel = ({ historyData, hideTitle }) => {
           TCP PING &middot; 近 {timeWindow} 小时
         </h2>
         
-        <div style={{ display: 'flex', gap: '0.5rem', background: 'rgba(0,0,0,0.3)', padding: '4px', borderRadius: '8px', border: '1px solid var(--glass-border)' }}>
-          {[1, 6, 24].map(h => (
-            <button
-              key={h}
-              onClick={() => setTimeWindow(h)}
-              style={{
-                background: timeWindow === h ? 'var(--glass-border)' : 'transparent',
-                color: timeWindow === h ? 'var(--text-primary)' : 'var(--text-muted)',
-                border: 'none',
-                padding: '4px 12px',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '0.85rem'
-              }}
-            >
-              {h}时
+        <div className="latency-panel-controls">
+          {hasSelectedSource && (
+            <button type="button" className="latency-filter-clear" onClick={onClearSource} title="取消线路聚焦">
+              <span>{selectedSource}</span>
+              <X size={13} />
             </button>
-          ))}
+          )}
+          <div className="latency-range-switch">
+            {[1, 6, 24].map(h => (
+              <button
+                key={h}
+                onClick={() => setTimeWindow(h)}
+                style={{
+                  background: timeWindow === h ? 'var(--glass-border)' : 'transparent',
+                  color: timeWindow === h ? 'var(--text-primary)' : 'var(--text-muted)',
+                  border: 'none',
+                  padding: '4px 12px',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem'
+                }}
+              >
+                {h}时
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

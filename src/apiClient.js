@@ -197,7 +197,7 @@ export const fetchFrontendConfig = async () => {
 // 4.5 Fetch All Agent UUIDs (Dynamic Discovery)
 export const fetchAllAgentUuids = async () => {
   try {
-    const res = await rpcCall('nodeget-server_list_all_agent_uuid', {});
+    const res = await rpcCall('agent-uuid_list_all', {});
     if (res && Array.isArray(res.uuids)) {
       return res.uuids.filter(isValidUuid);
     }
@@ -217,6 +217,7 @@ export const fetchTaskLatencies = async (latencyMapping) => {
     try {
       const parts = edge.split('->');
       const agentUuid = (parts[0] !== 'client') ? parts[0] : parts[1];
+      if (!isValidUuid(agentUuid)) return;
 
       const fetchByType = async (type) => {
         const res = await rpcCall('task_query', {
@@ -295,7 +296,7 @@ export const fetch24hTaskHistory = async (latencyMapping) => {
             condition: [
               { cron_source: cronName },
               { timestamp_from_to: [yesterday, now] },
-              { limit: 3000 },
+              { limit: 500 },
               { type: type }
             ]
           }

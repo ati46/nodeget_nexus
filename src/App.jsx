@@ -1,226 +1,216 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Activity, AlertTriangle, ArrowRight, Clock3, Loader2, Radio, RotateCcw, Server } from 'lucide-react';
 import SegmentTopology from './components/SegmentTopology';
 import NodeCard from './components/NodeCard';
 import NodeDetailModal from './components/NodeDetailModal';
 import GlobalNetworkPanel from './components/GlobalNetworkPanel';
 import GlobalLatencyPanel from './components/GlobalLatencyPanel';
-import { Activity, Grid, Loader2 } from 'lucide-react';
-import { initApi, fetchAgentMetadata, fetchStaticData, fetchDynamicData, fetchFrontendConfig, fetchTaskLatencies, fetch24hTaskHistory, fetchAllAgentUuids } from './apiClient';
+import { fetch24hTaskHistory, fetchAgentMetadata, fetchAllAgentUuids, fetchDynamicData, fetchStaticData, fetchTaskLatencies, initApi } from './apiClient';
 import { transformData } from './dataTransformer';
+import { buildDemoDashboard } from './demoData';
 import './index.css';
 
-const App = () => {
-  const [remoteConfig, setRemoteConfig] = useState(null);
-  const [data, setData] = useState(null);
-  const [selectedNode, setSelectedNode] = useState(null);
-  const [isInitializing, setIsInitializing] = useState(true);
-  const [initError, setInitError] = useState(null);
-  
-  // Persist fetched data for polling merges
-  const [metadataMap, setMetadataMap] = useState({});
-  const [staticData, setStaticData] = useState([]);
-  const [history24h, setHistory24h] = useState({});
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const VIRTUAL_NODE_LABELS = { client: 'Client', internet: 'Internet' };
+const getNodeName = (nodeId, data, config) => (
+  data?.agents?.[nodeId]?.name ||
+  config?.node_metadata?.[nodeId]?.name ||
+  VIRTUAL_NODE_LABELS[nodeId] ||
+  nodeId.slice(0, 8)
+);
+const buildTasks = (config) => {
+  const tasks = {};
+  config.edges.forEach((edge) => { if (edge.latencyTask) tasks[`${edge.from}->${edge.to}`] = edge.latencyTask; });
+  return { ...tasks, ...(config.latency_tasks || {}) };
+};
+const routeState = (latency) => !latency ? 'unknown' : latency.ping === 'fail' || latency.loss > 20 ? 'critical' : latency.ping > 150 || latency.loss > 5 ? 'warning' : 'healthy';
+const timeLabel = (value) => value ? new Date(value).toLocaleTimeString('zh-CN', { hour12: false }) : '--:--:--';
 
-  // 1. Initial Setup: Load config.json, init API, fetch metadata & static
+const App = () => {
+  const [config, setConfig] = useState(null);
+  const [data, setData] = useState(null);
+  const [history24h, setHistory24h] = useState({});
+  const [selectedNode, setSelectedNode] = useState(null);
+  const [selectedIncidentKey, setSelectedIncidentKey] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [connection, setConnection] = useState('connecting');
+  const [updatedAt, setUpdatedAt] = useState(null);
+  const [demoMode, setDemoMode] = useState(() => new URLSearchParams(window.location.search).get('demo') === '1');
+  const snapshotRef = useRef(null);
+  const latencyRef = useRef({});
+
   useEffect(() => {
+    let cancelled = false;
     const initialize = async () => {
       try {
-        const res = await fetch('config.json');
-        const cfg = await res.json();
-        setRemoteConfig(cfg);
-        
-        let apiUrl = cfg.api_url || '/';
-        let apiToken = cfg.api_token || '';
+        // [CAUTION] External configuration request; response is validated before use.
+        const response = await fetch('config.json', { cache: 'no-store' });
+        if (!response.ok) throw new Error(`配置加载失败（HTTP ${response.status}）`);
+        const raw = await response.json();
+        const site = raw.site_tokens?.[0];
+        const active = { ...raw, api_url: site?.backend_url || raw.api_url, api_token: site?.token || raw.api_token, latency_tasks: buildTasks(raw) };
+        if (!active.topology?.layers?.length || !active.edges?.length) throw new Error('config.json 必须包含 topology.layers 和 edges。');
 
-        if (cfg.site_tokens && cfg.site_tokens.length > 0) {
-          const site = cfg.site_tokens[0];
-          apiUrl = site.backend_url || apiUrl;
-          apiToken = site.token || apiToken;
+        if (demoMode) {
+          const demo = buildDemoDashboard(active);
+          if (cancelled) return;
+          // [CAUTION] Local state mutation; demo snapshot is committed atomically.
+          setConfig(active); setData(demo.data); setHistory24h(demo.history24h);
+          setConnection('demo'); setUpdatedAt(Date.now()); setLoading(false);
+          return;
         }
 
-        initApi(apiUrl, apiToken);
-
-        // Try to fetch topology routes from NodeGet KV (Dynamic configuration!)
-        const kvConfig = await fetchFrontendConfig();
-        // Fallback to static config.json if KV is not set or empty
-        const activeConfig = (kvConfig && kvConfig.topology_routes) ? kvConfig : cfg;
-        
-        if (!activeConfig.topology_routes) {
-          throw new Error("Missing topology_routes. The token might lack KV Read permissions, or you deleted it from config.json before saving it to KV.");
-        }
-        
-        // Ensure latency_tasks from static config is loaded/merged if KV lacks it or is outdated
-        if (cfg.latency_tasks) {
-          activeConfig.latency_tasks = { ...activeConfig.latency_tasks, ...cfg.latency_tasks };
-        }
-        
-        setRemoteConfig(activeConfig);
-
-        // Extract unique UUIDs from topology (excluding virtual nodes)
-        const uuids = new Set();
-        activeConfig.topology_routes.forEach(route => {
-          route.nodes.forEach(n => {
-            if (n !== 'client' && n !== 'internet') uuids.add(n);
-          });
-        });
-        
-        // Dynamically fetch ALL active agents from the backend, so Server Grid shows all assets (even if not in topology)
-        const allAgents = await fetchAllAgentUuids();
-        allAgents.forEach(u => uuids.add(u));
-
-        const uuidList = Array.from(uuids);
-
-        // Fetch Metadata (Names) and Static Data (OS/CPU)
-        const meta = await fetchAgentMetadata(uuidList);
-        const stat = await fetchStaticData(uuidList);
-        
-        setMetadataMap(meta);
-        setStaticData(stat);
-
-        // First dynamic fetch
-        const dyn = await fetchDynamicData(uuidList);
-        // Also fetch initial latencies if configured
-        if (activeConfig.latency_tasks) {
-          realLatenciesRef.current = await fetchTaskLatencies(activeConfig.latency_tasks);
-        }
-        setData(transformData(meta, stat, dyn, activeConfig, realLatenciesRef.current));
-        
-        setIsInitializing(false);
-      } catch (err) {
-        console.error("Failed to initialize:", err);
-        setInitError(err.message || String(err));
-        setIsInitializing(false);
+        initApi(active.api_url || '/', active.api_token || '');
+        const ids = new Set(active.edges.flatMap((edge) => [edge.from, edge.to]).filter((id) => UUID_RE.test(id)));
+        // [CAUTION] External read-only RPC calls; no write methods are exposed.
+        (await fetchAllAgentUuids()).forEach((id) => ids.add(id));
+        const uuidList = Array.from(ids);
+        const [metadata, staticData, dynamicData, latencies, history] = await Promise.all([
+          fetchAgentMetadata(uuidList), fetchStaticData(uuidList), fetchDynamicData(uuidList),
+          fetchTaskLatencies(active.latency_tasks), fetch24hTaskHistory(active.latency_tasks),
+        ]);
+        if (cancelled) return;
+        snapshotRef.current = { metadata, staticData, uuidList };
+        latencyRef.current = latencies;
+        setConfig(active); setHistory24h(history);
+        setData(transformData(metadata, staticData, dynamicData, active, latencies));
+        setConnection('live'); setUpdatedAt(Date.now()); setLoading(false);
+      } catch (cause) {
+        if (cancelled) return;
+        console.error('Dashboard initialization failed:', cause);
+        setError(cause.message || String(cause)); setConnection('offline'); setLoading(false);
       }
     };
     initialize();
-  }, []);
-
-  // 2. Data Polling loop
-  const realLatenciesRef = React.useRef({});
+    return () => { cancelled = true; };
+  }, [demoMode]);
 
   useEffect(() => {
-    if (!remoteConfig || isInitializing) return;
-    
-    const uuidList = Object.keys(metadataMap);
-    if (uuidList.length === 0) return;
+    if (demoMode || !config || !snapshotRef.current) return undefined;
+    let cancelled = false;
+    let running = false;
+    const refresh = async () => {
+      if (running) return;
+      running = true;
+      try {
+        // [CAUTION] External polling call; overlapping cycles are skipped.
+        const dynamicData = await fetchDynamicData(snapshotRef.current.uuidList);
+        if (!cancelled) {
+          setData(transformData(snapshotRef.current.metadata, snapshotRef.current.staticData, dynamicData, config, latencyRef.current));
+          setUpdatedAt(Date.now()); setConnection('live');
+        }
+      } catch (cause) {
+        console.warn('Dynamic refresh failed:', cause);
+        if (!cancelled) setConnection('stale');
+      } finally { running = false; }
+    };
+    const timer = window.setInterval(refresh, 6000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [config, demoMode]);
 
-    const timer = setInterval(async () => {
-      const dyn = await fetchDynamicData(uuidList);
-      setData(transformData(metadataMap, staticData, dyn, remoteConfig, realLatenciesRef.current));
-    }, 2000);
-    
-    return () => clearInterval(timer);
-  }, [remoteConfig, isInitializing, metadataMap, staticData]);
-
-  // 3. Latency Polling loop (every 20s to protect DB)
   useEffect(() => {
-    if (!remoteConfig || !remoteConfig.latency_tasks || isInitializing) return;
-    
-    const fetchLatencies = async () => {
-      const lats = await fetchTaskLatencies(remoteConfig.latency_tasks);
-      realLatenciesRef.current = lats;
+    if (demoMode || !config) return undefined;
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        // [CAUTION] External latency polling call at a conservative cadence.
+        const latencies = await fetchTaskLatencies(config.latency_tasks);
+        if (!cancelled) { latencyRef.current = latencies; setData((current) => current ? { ...current, latencies } : current); }
+      } catch (cause) { console.warn('Latency refresh failed:', cause); }
     };
-    
-    const fetch24h = async () => {
-      const hist = await fetch24hTaskHistory(remoteConfig.latency_tasks);
-      setHistory24h(hist);
-    };
+    const timer = window.setInterval(refresh, 20000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [config, demoMode]);
 
-    fetchLatencies();
-    fetch24h(); // initial load of 24h data
+  const routes = useMemo(() => {
+    const summary = { healthy: 0, warning: 0, critical: 0, unknown: 0, incidents: [] };
+    if (!config || !data) return summary;
+    const seen = new Set();
+    config.edges.forEach((edge) => {
+      const key = `${edge.from}->${edge.to}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      const latency = data.latencies?.[key];
+      const state = routeState(latency);
+      summary[state] += 1;
+      if (state === 'warning' || state === 'critical') {
+        summary.incidents.push({ ...edge, key, latency, state, task: config.latency_tasks?.[key] || edge.latencyTask || null });
+      }
+    });
+    return summary;
+  }, [config, data]);
 
-    const timer = setInterval(fetchLatencies, 20000); // 20s for real-time dots
-    const timer24h = setInterval(fetch24h, 5 * 60 * 1000); // 5 minutes for massive 24h history
-    return () => {
-      clearInterval(timer);
-      clearInterval(timer24h);
-    };
-  }, [remoteConfig, isInitializing]);
+  useEffect(() => {
+    if (!selectedIncidentKey || routes.incidents.some((item) => item.key === selectedIncidentKey)) return;
+    // [CAUTION] Local UI selection is cleared when polling removes the incident from the attention queue.
+    setSelectedIncidentKey(null);
+  }, [routes.incidents, selectedIncidentKey]);
 
-  if (isInitializing) {
-    return (
-      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
-        <Loader2 className="spin" size={48} color="var(--accent-cyan)" />
-        <h2 style={{ color: 'var(--text-primary)', letterSpacing: '2px' }}>LOADING NODEGET KV CONFIG...</h2>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Fetching dynamic topology namespace</p>
-      </div>
-    );
-  }
+  const selectedIncident = routes.incidents.find((item) => item.key === selectedIncidentKey);
+  const selectedLatencyTask = selectedIncident?.task || null;
+  const handleIncidentSelect = (item) => {
+    if (!item.task || !history24h[item.task]) return;
+    // [CAUTION] Local UI filter state only; monitoring data remains read-only.
+    setSelectedIncidentKey((current) => current === item.key ? null : item.key);
+  };
+  const nodes = useMemo(() => data ? Object.values(data.agents).sort((a, b) => a.status !== b.status ? (a.status === 'offline' ? -1 : 1) : b.cpu - a.cpu) : [], [data]);
+  const enterDemo = () => { setError(null); setLoading(true); setDemoMode(true); };
 
-  if (initError) {
-    return (
-      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem', padding: '2rem' }}>
-        <div style={{ background: 'rgba(244, 63, 94, 0.1)', padding: '2rem', borderRadius: '12px', border: '1px solid var(--accent-rose)', maxWidth: '600px', textAlign: 'center' }}>
-          <h2 style={{ color: 'var(--accent-rose)', marginBottom: '1rem' }}>Failed to Initialize Dashboard</h2>
-          <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem' }}>
-            Please check your <code>config.json</code> (especially the <code>api_url</code>) and ensure you are logged into the NodeGet Admin Dashboard on this browser.
-          </p>
-          <div style={{ background: 'rgba(0,0,0,0.5)', padding: '1rem', borderRadius: '8px', color: '#ff8a8a', fontFamily: 'monospace', fontSize: '0.9rem', textAlign: 'left', wordBreak: 'break-all' }}>
-            {initError}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!data) return null;
-
-  // Find all mapped UUIDs in the topology config
-  const mappedNodeIds = new Set();
-  remoteConfig.topology_routes.forEach(route => {
-    route.nodes.forEach(id => mappedNodeIds.add(id));
-  });
-
-  // All nodes will be shown in the Grid
-  const allNodes = Object.values(data.agents);
+  if (loading) return <div className="center-state" role="status"><div className="boot-mark"><Loader2 size={22} /></div><p className="eyebrow">NODEGET / NEXUS</p><h1>正在建立监控链路</h1><p>读取拓扑、Agent 快照与线路拨测结果。</p></div>;
+  if (error) return <div className="center-state error-state"><div className="boot-mark error"><AlertTriangle size={22} /></div><p className="eyebrow">CONNECTION INTERRUPTED</p><h1>无法连接 NodeGet</h1><p>{error}</p><div className="state-actions"><button className="button primary" onClick={() => window.location.reload()}><RotateCcw size={16} />重新连接</button><button className="button ghost" onClick={enterDemo}>查看演示界面<ArrowRight size={16} /></button></div></div>;
+  if (!data || !config) return null;
 
   return (
-    <div className="app-container">
-      <GlobalNetworkPanel global={data.global} />
-
-      <main>
-        {/* Middle: Clean Routing Topology View */}
-        <div className="glass-card" style={{ padding: '1rem 2rem', marginBottom: '1.5rem' }}>
-          <h2 style={{ marginBottom: '0.5rem', color: 'var(--text-primary)', borderBottom: '1px solid var(--glass-border)', paddingBottom: '0.5rem' }}>
-            Routing Topology (网络连通性)
-          </h2>
-          <SegmentTopology data={data} onNodeClick={(nodeStats) => setSelectedNode(nodeStats)} />
+    <div className="app-shell">
+      <header className="command-header">
+        <div className="brand-lockup"><div className="brand-glyph" aria-hidden="true"><span /><span /><span /></div><div><p className="eyebrow">NODEGET / ROUTE OPERATIONS</p><h1>Nexus <span>线路控制台</span></h1></div></div>
+        <div className="header-status"><span className={`connection-badge ${connection}`}><Radio size={14} />{connection === 'demo' ? 'DEMO' : connection === 'stale' ? 'STALE' : 'LIVE'}</span><span className="updated-at"><Clock3 size={14} />{timeLabel(updatedAt)}</span></div>
+      </header>
+      <main className="dashboard">
+        <GlobalNetworkPanel global={data.global} routeSummary={routes} />
+        <section className="panel topology-panel">
+          <div className="section-heading"><div><p className="eyebrow">ROUTE LENS</p><h2>端到端链路</h2><p>选择节点，聚焦它参与的全部路径。</p></div><div className="legend"><span><i className="healthy" />正常</span><span><i className="warning" />波动</span><span><i className="critical" />故障</span><span><i className="unknown" />无数据</span></div></div>
+          <SegmentTopology data={data} onNodeDetail={setSelectedNode} />
+        </section>
+        <div className="insight-grid">
+          <section className="panel incidents-panel"><div className="section-heading compact"><div><p className="eyebrow">ATTENTION QUEUE</p><h2>需要关注</h2></div><span className="count-badge">{routes.incidents.length}</span></div>
+            {routes.incidents.length ? (
+              <div className="incident-list">
+                {routes.incidents.slice(0, 5).map((item) => {
+                  const isSelected = selectedIncidentKey === item.key;
+                  const hasHistory = Boolean(item.task && history24h[item.task]);
+                  return (
+                    <button
+                      type="button"
+                      className={`incident-row ${item.state} ${isSelected ? 'is-selected' : ''}`}
+                      key={item.key}
+                      onClick={() => handleIncidentSelect(item)}
+                      aria-pressed={isSelected}
+                      disabled={!hasHistory}
+                      title={hasHistory ? `在历史图表中聚焦 ${item.task}` : '该线路没有可用的历史拨测'}
+                    >
+                      <AlertTriangle size={17} />
+                      <div>
+                        <strong title={`${item.from} → ${item.to}`}>{getNodeName(item.from, data, config)} → {getNodeName(item.to, data, config)}</strong>
+                        <span>{item.latency?.ping === 'fail' ? '探测失败' : `${item.latency?.ping} ms · 丢包 ${item.latency?.loss || 0}%`}</span>
+                        <small>{item.task || '未关联历史任务'}</small>
+                      </div>
+                      <ArrowRight className="incident-row-arrow" size={15} />
+                    </button>
+                  );
+                })}
+              </div>
+            ) : <div className="quiet-state"><Activity size={22} /><strong>当前没有异常线路</strong><span>所有可观测路径都在阈值内。</span></div>}
+          </section>
+          <section className="panel latency-panel"><div className="section-heading compact"><div><p className="eyebrow">LATENCY HISTORY</p><h2>延迟与丢包</h2></div></div>{Object.keys(history24h).length ? <GlobalLatencyPanel historyData={history24h} hideTitle selectedSource={selectedLatencyTask} onClearSource={() => setSelectedIncidentKey(null)} /> : <div className="quiet-state"><Activity size={22} /><strong>暂无历史拨测</strong></div>}</section>
         </div>
-
-        {/* Bottom: Detailed Grid View for ALL nodes */}
-        {allNodes.length > 0 && (
-          <div className="glass-card" style={{ padding: '2rem' }}>
-            <h2 style={{ marginBottom: '1.5rem', color: 'var(--text-primary)', borderBottom: '1px solid var(--glass-border)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Grid size={20} color="var(--accent-emerald)" />
-              Server Grid (全景资产管理)
-            </h2>
-            <div className="nodes-grid">
-              {allNodes.map(nodeStats => (
-                <NodeCard 
-                  key={nodeStats.id} 
-                  node={{ id: nodeStats.id, name: nodeStats.name }} 
-                  stats={nodeStats}
-                  onClick={() => setSelectedNode(nodeStats)}
-                />
-              ))}
-            </div>
-          </div>
-        )}
+        <section className="panel assets-panel"><div className="section-heading"><div><p className="eyebrow">AGENT ROSTER</p><h2>节点资产</h2><p>优先显示离线节点和资源占用较高的节点。</p></div><span className="asset-count"><Server size={15} />{nodes.length} Agents</span></div><div className="asset-list">{nodes.map((node) => <NodeCard key={node.id} stats={node} onClick={() => setSelectedNode(node)} />)}</div></section>
       </main>
-
-      {/* Modal for 3-ISP Ping details */}
-      {selectedNode && (
-        <NodeDetailModal 
-          agent={selectedNode} 
-          onClose={() => setSelectedNode(null)} 
-        />
-      )}
-
-      <footer style={{ textAlign: 'center', color: 'var(--text-muted)', marginTop: '2rem', fontSize: '0.9rem' }}>
-        <p>Powered by NodeGet JSON-RPC &middot; Hybrid Auto-Discovery</p>
-      </footer>
+      <footer className="site-footer"><span>NodeGet Nexus</span><span>Read-only telemetry surface</span></footer>
+      {selectedNode && <NodeDetailModal agent={selectedNode} historyData={history24h} onClose={() => setSelectedNode(null)} />}
     </div>
   );
-}
+};
 
 export default App;
