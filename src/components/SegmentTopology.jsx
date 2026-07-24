@@ -296,6 +296,7 @@ const SegmentTopology = ({ data, onNodeDetail }) => {
               return (
                 <g key={`${key}-${edgeIndex}`} className={`route-edge route-edge-${state} ${isFocusDimmed ? 'is-focus-dimmed' : ''} ${isHoverDimmed ? 'is-hover-dimmed' : ''} ${isSpotlight ? 'is-spotlight' : ''}`}>
                   <path className="route-edge-path" d={path} />
+                  <path className="route-edge-flow" d={path} />
                   <path
                     className="route-edge-hit"
                     d={path}
