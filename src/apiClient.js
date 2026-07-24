@@ -159,11 +159,22 @@ export const fetchStaticData = async (uuids) => {
   const validUuids = uuids.filter(isValidUuid);
   if (validUuids.length === 0) return [];
 
-  const result = await rpcCall('agent_static_data_multi_last_query', {
-    uuids: validUuids,
-    fields: ['cpu', 'system']
-  });
-  return result || [];
+  try {
+    const result = await rpcCall('agent_static_data_multi_last_query', {
+      uuids: validUuids,
+      fields: ['cpu', 'system']
+    });
+    if (Array.isArray(result)) return result;
+    if (result && typeof result === 'object') {
+      if (Array.isArray(result.records)) return result.records;
+      if (Array.isArray(result.data)) return result.data;
+      return Object.entries(result).map(([uuid, val]) => ({ uuid, ...(val || {}) }));
+    }
+    return [];
+  } catch (e) {
+    console.warn("fetchStaticData failed:", e);
+    return [];
+  }
 };
 
 // 3. Fetch Dynamic Data (CPU Load, RAM, Network)
@@ -173,11 +184,22 @@ export const fetchDynamicData = async (uuids) => {
   const validUuids = uuids.filter(isValidUuid);
   if (validUuids.length === 0) return [];
 
-  const result = await rpcCall('agent_dynamic_data_multi_last_query', {
-    uuids: validUuids,
-    fields: ['cpu', 'ram', 'network', 'load', 'disk', 'system']
-  });
-  return result || [];
+  try {
+    const result = await rpcCall('agent_dynamic_data_multi_last_query', {
+      uuids: validUuids,
+      fields: ['cpu', 'ram', 'network', 'load', 'disk', 'system']
+    });
+    if (Array.isArray(result)) return result;
+    if (result && typeof result === 'object') {
+      if (Array.isArray(result.records)) return result.records;
+      if (Array.isArray(result.data)) return result.data;
+      return Object.entries(result).map(([uuid, val]) => ({ uuid, ...(val || {}) }));
+    }
+    return [];
+  } catch (e) {
+    console.warn("fetchDynamicData failed:", e);
+    return [];
+  }
 };
 
 // 4. Fetch Frontend Topology Config from KV
@@ -187,7 +209,12 @@ export const fetchFrontendConfig = async () => {
       namespace: 'frontend_topology_theme',
       key: 'config'
     });
-    return res;
+    if (!res) return null;
+    if (typeof res === 'string') {
+      try { return JSON.parse(res); } catch (e) { return null; }
+    }
+    if (typeof res === 'object') return res;
+    return null;
   } catch (e) {
     console.warn("No KV config found for frontend_topology_theme, will fallback to config.json");
     return null;
@@ -198,8 +225,11 @@ export const fetchFrontendConfig = async () => {
 export const fetchAllAgentUuids = async () => {
   try {
     const res = await rpcCall('agent-uuid_list_all', {});
-    if (res && Array.isArray(res.uuids)) {
-      return res.uuids.filter(isValidUuid);
+    if (Array.isArray(res)) return res.filter(isValidUuid);
+    if (res && Array.isArray(res.uuids)) return res.uuids.filter(isValidUuid);
+    if (res && typeof res === 'object') {
+      const keys = Object.keys(res);
+      return keys.filter(isValidUuid);
     }
     return [];
   } catch (e) {

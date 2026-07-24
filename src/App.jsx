@@ -5,7 +5,7 @@ import NodeCard from './components/NodeCard';
 import NodeDetailModal from './components/NodeDetailModal';
 import GlobalNetworkPanel from './components/GlobalNetworkPanel';
 import GlobalLatencyPanel from './components/GlobalLatencyPanel';
-import { fetch24hTaskHistory, fetchAgentMetadata, fetchAllAgentUuids, fetchDynamicData, fetchStaticData, fetchTaskLatencies, initApi } from './apiClient';
+import { fetch24hTaskHistory, fetchAgentMetadata, fetchAllAgentUuids, fetchDynamicData, fetchFrontendConfig, fetchStaticData, fetchTaskLatencies, initApi } from './apiClient';
 import { transformData } from './dataTransformer';
 import { buildDemoDashboard } from './demoData';
 import './index.css';
@@ -18,11 +18,18 @@ const getNodeName = (nodeId, data, config) => (
   VIRTUAL_NODE_LABELS[nodeId] ||
   nodeId.slice(0, 8)
 );
+
 const buildTasks = (config) => {
   const tasks = {};
-  config.edges.forEach((edge) => { if (edge.latencyTask) tasks[`${edge.from}->${edge.to}`] = edge.latencyTask; });
-  return { ...tasks, ...(config.latency_tasks || {}) };
+  const edges = Array.isArray(config?.edges) ? config.edges : [];
+  edges.forEach((edge) => {
+    if (edge && edge.from && edge.to && edge.latencyTask) {
+      tasks[`${edge.from}->${edge.to}`] = edge.latencyTask;
+    }
+  });
+  return { ...tasks, ...(config?.latency_tasks || {}) };
 };
+
 const routeState = (latency) => !latency ? 'unknown' : latency.ping === 'fail' || latency.loss > 20 ? 'critical' : latency.ping > 150 || latency.loss > 5 ? 'warning' : 'healthy';
 const timeLabel = (value) => value ? new Date(value).toLocaleTimeString('zh-CN', { hour12: false }) : '--:--:--';
 
@@ -49,37 +56,73 @@ const App = () => {
         if (!response.ok) throw new Error(`配置加载失败（HTTP ${response.status}）`);
         const raw = await response.json();
         const site = raw.site_tokens?.[0];
-        const active = { ...raw, api_url: site?.backend_url || raw.api_url, api_token: site?.token || raw.api_token, latency_tasks: buildTasks(raw) };
-        if (!active.topology?.layers?.length || !active.edges?.length) throw new Error('config.json 必须包含 topology.layers 和 edges。');
+        const apiUrl = site?.backend_url || raw.api_url;
+        const apiToken = site?.token || raw.api_token;
 
         if (demoMode) {
-          const demo = buildDemoDashboard(active);
+          const demoConfig = { ...raw, edges: raw.edges || [], latency_tasks: buildTasks(raw) };
+          const demo = buildDemoDashboard(demoConfig);
           if (cancelled) return;
-          // [CAUTION] Local state mutation; demo snapshot is committed atomically.
-          setConfig(active); setData(demo.data); setHistory24h(demo.history24h);
+          setConfig(demoConfig); setData(demo.data); setHistory24h(demo.history24h);
           setConnection('demo'); setUpdatedAt(Date.now()); setLoading(false);
           return;
         }
 
-        initApi(active.api_url || '/', active.api_token || '');
-        const ids = new Set(active.edges.flatMap((edge) => [edge.from, edge.to]).filter((id) => UUID_RE.test(id)));
-        // [CAUTION] External read-only RPC calls; no write methods are exposed.
-        (await fetchAllAgentUuids()).forEach((id) => ids.add(id));
+        // Initialize WebSocket RPC client
+        initApi(apiUrl || '/', apiToken || '');
+
+        // Dynamic KV Merge (KV wins, static config supplements)
+        let active = { ...raw, edges: Array.isArray(raw.edges) ? raw.edges : [] };
+        const kvConfig = await fetchFrontendConfig();
+        if (kvConfig && typeof kvConfig === 'object') {
+          active = {
+            ...active,
+            ...kvConfig,
+            topology: kvConfig.topology || active.topology,
+            edges: Array.isArray(kvConfig.edges) ? kvConfig.edges : active.edges,
+            latency_tasks: { ...(active.latency_tasks || {}), ...(kvConfig.latency_tasks || {}) }
+          };
+        }
+
+        active.latency_tasks = buildTasks(active);
+
+        if (!active.topology?.layers?.length) {
+          throw new Error('拓扑配置缺失：必须包含 topology.layers（支持配置于 KV 或 config.json）。');
+        }
+
+        const edges = Array.isArray(active.edges) ? active.edges : [];
+        const ids = new Set(edges.flatMap((edge) => [edge?.from, edge?.to]).filter((id) => id && UUID_RE.test(id)));
+
+        // Dynamic Agent Discovery
+        const allUuids = await fetchAllAgentUuids();
+        if (Array.isArray(allUuids)) {
+          allUuids.forEach((id) => ids.add(id));
+        }
+
         const uuidList = Array.from(ids);
         const [metadata, staticData, dynamicData, latencies, history] = await Promise.all([
-          fetchAgentMetadata(uuidList), fetchStaticData(uuidList), fetchDynamicData(uuidList),
-          fetchTaskLatencies(active.latency_tasks), fetch24hTaskHistory(active.latency_tasks),
+          fetchAgentMetadata(uuidList),
+          fetchStaticData(uuidList),
+          fetchDynamicData(uuidList),
+          fetchTaskLatencies(active.latency_tasks),
+          fetch24hTaskHistory(active.latency_tasks),
         ]);
+
         if (cancelled) return;
         snapshotRef.current = { metadata, staticData, uuidList };
         latencyRef.current = latencies;
-        setConfig(active); setHistory24h(history);
+        setConfig(active);
+        setHistory24h(history);
         setData(transformData(metadata, staticData, dynamicData, active, latencies));
-        setConnection('live'); setUpdatedAt(Date.now()); setLoading(false);
+        setConnection('live');
+        setUpdatedAt(Date.now());
+        setLoading(false);
       } catch (cause) {
         if (cancelled) return;
         console.error('Dashboard initialization failed:', cause);
-        setError(cause.message || String(cause)); setConnection('offline'); setLoading(false);
+        setError(cause.message || String(cause));
+        setConnection('offline');
+        setLoading(false);
       }
     };
     initialize();
@@ -94,11 +137,11 @@ const App = () => {
       if (running) return;
       running = true;
       try {
-        // [CAUTION] External polling call; overlapping cycles are skipped.
         const dynamicData = await fetchDynamicData(snapshotRef.current.uuidList);
         if (!cancelled) {
           setData(transformData(snapshotRef.current.metadata, snapshotRef.current.staticData, dynamicData, config, latencyRef.current));
-          setUpdatedAt(Date.now()); setConnection('live');
+          setUpdatedAt(Date.now());
+          setConnection('live');
         }
       } catch (cause) {
         console.warn('Dynamic refresh failed:', cause);
@@ -114,9 +157,11 @@ const App = () => {
     let cancelled = false;
     const refresh = async () => {
       try {
-        // [CAUTION] External latency polling call at a conservative cadence.
         const latencies = await fetchTaskLatencies(config.latency_tasks);
-        if (!cancelled) { latencyRef.current = latencies; setData((current) => current ? { ...current, latencies } : current); }
+        if (!cancelled) {
+          latencyRef.current = latencies;
+          setData((current) => current ? { ...current, latencies } : current);
+        }
       } catch (cause) { console.warn('Latency refresh failed:', cause); }
     };
     const timer = window.setInterval(refresh, 20000);
@@ -127,7 +172,9 @@ const App = () => {
     const summary = { healthy: 0, warning: 0, critical: 0, unknown: 0, incidents: [] };
     if (!config || !data) return summary;
     const seen = new Set();
-    config.edges.forEach((edge) => {
+    const edges = Array.isArray(config.edges) ? config.edges : [];
+    edges.forEach((edge) => {
+      if (!edge || !edge.from || !edge.to) return;
       const key = `${edge.from}->${edge.to}`;
       if (seen.has(key)) return;
       seen.add(key);
@@ -143,7 +190,6 @@ const App = () => {
 
   useEffect(() => {
     if (!selectedIncidentKey || routes.incidents.some((item) => item.key === selectedIncidentKey)) return;
-    // [CAUTION] Local UI selection is cleared when polling removes the incident from the attention queue.
     setSelectedIncidentKey(null);
   }, [routes.incidents, selectedIncidentKey]);
 
@@ -151,7 +197,6 @@ const App = () => {
   const selectedLatencyTask = selectedIncident?.task || null;
   const handleIncidentSelect = (item) => {
     if (!item.task || !history24h[item.task]) return;
-    // [CAUTION] Local UI filter state only; monitoring data remains read-only.
     setSelectedIncidentKey((current) => current === item.key ? null : item.key);
   };
   const nodes = useMemo(() => data ? Object.values(data.agents).sort((a, b) => a.status !== b.status ? (a.status === 'offline' ? -1 : 1) : b.cpu - a.cpu) : [], [data]);
