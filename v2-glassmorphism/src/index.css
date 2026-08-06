@@ -51,8 +51,7 @@ button, input { font: inherit; color: inherit; }
 
 /* Layout Grid & Main Glass Shell */
 .app-layout {
-  display: grid;
-  grid-template-columns: max-content 300px 1fr;
+  display: flex;
   width: 100%;
   max-width: 1920px;
   height: calc(100vh - 64px);
@@ -74,20 +73,30 @@ button, input { font: inherit; color: inherit; }
 }
 
 .topology-area {
-  background: url('/world-map.png') center center / contain no-repeat, transparent;
   position: relative;
+  background: transparent;
 }
 .topology-area::before {
   content: "";
   position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
-  background: radial-gradient(ellipse at center, transparent 30%, rgba(10, 12, 20, 0.85) 100%);
-  border-radius: inherit;
+  background: url('/world-map.png') center center / 85% no-repeat;
+  mix-blend-mode: screen;
+  opacity: 0.7;
   pointer-events: none;
   z-index: 0;
 }
-.topology-area > * {
+.topology-area::after {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: radial-gradient(ellipse at center, transparent 20%, rgba(10, 12, 20, 0.95) 100%);
+  border-radius: inherit;
+  pointer-events: none;
   z-index: 1;
+}
+.topology-area > * {
+  z-index: 2;
   position: relative;
 }
 
@@ -300,24 +309,31 @@ button, input { font: inherit; color: inherit; }
 
 /* Override existing SVG Topology styles to match glassmorphism */
 .route-svg-node-box {
-  fill: rgba(30, 34, 50, 0.8);
-  stroke: var(--border-light);
-  rx: 16px;
+  fill: rgba(20, 25, 35, 0.9);
+  stroke: rgba(255, 255, 255, 0.15);
+  stroke-width: 1.5;
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .route-svg-node:hover .route-svg-node-box {
-  fill: rgba(40, 45, 65, 0.9);
   stroke: var(--accent-cyan);
-  filter: drop-shadow(0 0 12px rgba(14, 165, 233, 0.4));
+  filter: drop-shadow(0 0 12px rgba(14, 165, 233, 0.6));
 }
 .route-svg-node-name {
   fill: var(--text-primary);
   font: 500 11px "Inter", sans-serif;
-  dominant-baseline: middle;
   text-anchor: middle;
 }
-.route-svg-node-status.online { fill: var(--healthy); filter: drop-shadow(0 0 6px var(--healthy)); }
-.route-svg-node-status.offline { fill: var(--critical); filter: drop-shadow(0 0 6px var(--critical)); }
+.route-svg-node-blade {
+  transition: fill 0.3s;
+}
+.route-svg-node:hover .route-svg-node-blade {
+  fill: rgba(14, 165, 233, 0.4);
+}
+.route-svg-node-status-group {
+  filter: drop-shadow(0 0 6px rgba(0,0,0,0.6));
+}
+.route-svg-node-status.online { fill: var(--healthy); filter: drop-shadow(0 0 8px var(--healthy)); }
+.route-svg-node-status.offline { fill: var(--critical); filter: drop-shadow(0 0 8px var(--critical)); }
 .route-edge-path {
   fill: none;
   stroke: rgba(255, 255, 255, 0.15);

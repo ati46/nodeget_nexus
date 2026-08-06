@@ -380,69 +380,73 @@ const App = () => {
         </header>
 
         {activeTab === 'Dashboard' && (
-          <section className="glass-panel topology-area" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-          <div className="topology-header" style={{ padding: '24px 32px 0 32px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <h2 style={{ fontSize: '20px', letterSpacing: '0.02em', fontWeight: 600 }}>NETWORK TOPOLOGY MAP</h2>
-              <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '6px' }}>Live Network: Global Infrastructure Map</div>
-            </div>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '16px' }}>
-              <div style={{ display: 'flex', gap: '16px', fontSize: '12px', background: 'rgba(255,255,255,0.03)', padding: '6px 16px', borderRadius: '16px', border: '1px solid var(--border)' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Region: <span style={{ color: 'var(--accent-cyan)' }}>Global</span></span>
-                <span style={{ color: 'var(--text-secondary)' }}>Avg Latency: <span style={{ color: '#fff' }}>{data.agents ? '42ms' : '-'}</span></span>
-                <span style={{ color: 'var(--text-secondary)' }}>Throughput: <span style={{ color: '#fff' }}>{totalRx}</span></span>
+          <div style={{ display: 'flex', gap: '24px', flex: 1, minHeight: 0 }}>
+            <section className="glass-panel topology-area" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+              <div className="topology-header" style={{ padding: '24px 32px 0 32px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <h2 style={{ fontSize: '20px', letterSpacing: '0.02em', fontWeight: 600 }}>NETWORK TOPOLOGY MAP</h2>
+                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '6px' }}>Live Network: Global Infrastructure Map</div>
+                </div>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '16px' }}>
+                  <div style={{ display: 'flex', gap: '16px', fontSize: '12px', background: 'rgba(255,255,255,0.03)', padding: '6px 16px', borderRadius: '16px', border: '1px solid var(--border)' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Region: <span style={{ color: 'var(--accent-cyan)' }}>Global</span></span>
+                    <span style={{ color: 'var(--text-secondary)' }}>Avg Latency: <span style={{ color: '#fff' }}>{data.agents ? '42ms' : '-'}</span></span>
+                    <span style={{ color: 'var(--text-secondary)' }}>Throughput: <span style={{ color: '#fff' }}>{totalRx}</span></span>
+                  </div>
+                  
+                  <div style={{ display: 'flex', gap: '16px', fontSize: '12px' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--healthy)', boxShadow: '0 0 8px var(--healthy)' }}></span> Healthy Green</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--warning)', boxShadow: '0 0 8px var(--warning)' }}></span> Warning Orange</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--critical)', boxShadow: '0 0 8px var(--critical)' }}></span> Critical Red</span>
+                  </div>
+                </div>
               </div>
               
-              <div style={{ display: 'flex', gap: '16px', fontSize: '12px' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--healthy)', boxShadow: '0 0 8px var(--healthy)' }}></span> Healthy Green</span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--warning)', boxShadow: '0 0 8px var(--warning)' }}></span> Warning Orange</span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--critical)', boxShadow: '0 0 8px var(--critical)' }}></span> Critical Red</span>
+              <div style={{ flex: 1, position: 'relative', minHeight: '400px', display: 'flex' }}>
+                 <SegmentTopology data={data} onNodeDetail={() => {}} />
               </div>
-            </div>
+            </section>
+            
+            <aside className="right-sidebar custom-scrollbar" style={{ width: '320px', display: 'flex', flexDirection: 'column', gap: '24px', overflowY: 'auto', paddingRight: '8px' }}>
+              <div className="glass-panel" style={{ padding: '20px' }}>
+                 <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '16px', letterSpacing: '0.1em', display: 'flex', justifyContent: 'space-between' }}>
+                   TRAFFIC SUMMARY <span>•••</span>
+                 </div>
+                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                   <div>
+                     <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '8px' }}>Ingress: <span style={{ color: '#fff', fontWeight: 600 }}>{totalRx}</span></div>
+                     <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Egress: <span style={{ color: '#fff', fontWeight: 600 }}>{totalTx}</span></div>
+                   </div>
+                   <div style={{ width: '120px', height: '40px' }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={[{v:20},{v:40},{v:30},{v:50},{v:30},{v:60}]}>
+                          <Area type="monotone" dataKey="v" stroke="var(--accent-cyan)" strokeWidth={2} fill="transparent" />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                   </div>
+                 </div>
+              </div>
+              
+              <div className="glass-panel" style={{ padding: '20px' }}>
+                 <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '20px', letterSpacing: '0.1em', display: 'flex', justifyContent: 'space-between' }}>
+                   SERVER HEALTH <span>•••</span>
+                 </div>
+                 <div style={{ display: 'flex', gap: '2px', height: '6px', borderRadius: '3px', overflow: 'hidden', marginBottom: '16px' }}>
+                   <div style={{ flex: nodes.filter(n => n.status === 'online').length, background: 'var(--healthy)' }}></div>
+                   <div style={{ flex: routes.incidents.filter(i => i.state === 'warning').length, background: 'var(--warning)' }}></div>
+                   <div style={{ flex: nodes.filter(n => n.status === 'offline').length, background: 'var(--critical)' }}></div>
+                 </div>
+                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 500 }}>
+                   <span style={{ color: 'var(--healthy)' }}>Online: {nodes.filter(n => n.status === 'online').length}</span>
+                   <span style={{ color: 'var(--warning)' }}>Warning: {routes.incidents.filter(i => i.state === 'warning').length}</span>
+                   <span style={{ color: 'var(--critical)' }}>Offline: {nodes.filter(n => n.status === 'offline').length}</span>
+                 </div>
+              </div>
+
+              <div id="issue-tray-portal" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}></div>
+            </aside>
           </div>
-          
-          <div style={{ flex: 1, position: 'relative', minHeight: '400px' }}>
-             <SegmentTopology data={data} onNodeDetail={() => {}} />
-          </div>
-          
-          <div style={{ display: 'flex', gap: '24px', padding: '24px 32px' }}>
-             <div className="glass-panel" style={{ flex: 1, padding: '16px 20px', background: 'rgba(255,255,255,0.02)' }}>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px', letterSpacing: '0.1em', display: 'flex', justifyContent: 'space-between' }}>
-                  TRAFFIC SUMMARY <span>•••</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Ingress: <span style={{ color: '#fff' }}>{totalRx}</span></div>
-                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Egress: <span style={{ color: '#fff' }}>{totalTx}</span></div>
-                  </div>
-                  <div style={{ width: '120px', height: '40px' }}>
-                     <ResponsiveContainer width="100%" height="100%">
-                       <AreaChart data={[{v:20},{v:40},{v:30},{v:50},{v:30},{v:60}]}>
-                         <Area type="monotone" dataKey="v" stroke="var(--accent-cyan)" strokeWidth={2} fill="transparent" />
-                       </AreaChart>
-                     </ResponsiveContainer>
-                  </div>
-                </div>
-             </div>
-             
-             <div className="glass-panel" style={{ flex: 1, padding: '16px 20px', background: 'rgba(255,255,255,0.02)' }}>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '16px', letterSpacing: '0.1em', display: 'flex', justifyContent: 'space-between' }}>
-                  SERVER HEALTH <span>•••</span>
-                </div>
-                <div style={{ display: 'flex', gap: '2px', height: '6px', borderRadius: '3px', overflow: 'hidden', marginBottom: '12px' }}>
-                  <div style={{ flex: nodes.filter(n => n.status === 'online').length, background: 'var(--healthy)' }}></div>
-                  <div style={{ flex: routes.incidents.filter(i => i.state === 'warning').length, background: 'var(--warning)' }}></div>
-                  <div style={{ flex: nodes.filter(n => n.status === 'offline').length, background: 'var(--critical)' }}></div>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                  <span style={{ color: 'var(--healthy)' }}>Online: {nodes.filter(n => n.status === 'online').length}</span>
-                  <span style={{ color: 'var(--warning)' }}>Warning: {routes.incidents.filter(i => i.state === 'warning').length}</span>
-                  <span style={{ color: 'var(--critical)' }}>Offline: {nodes.filter(n => n.status === 'offline').length}</span>
-                </div>
-             </div>
-          </div>
-        </section>
         )}
 
         {activeTab === 'Servers' && (

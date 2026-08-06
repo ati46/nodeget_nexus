@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ArrowRight, Globe2, Server, X } from 'lucide-react';
 
 const VIRTUAL_NODE_LABELS = {
@@ -65,10 +66,29 @@ const getLatencyLabel = (latency) => {
 };
 
 const getLinePath = (x1, y1, x2, y2) => {
-  const distance = Math.max(32, x2 - x1);
-  const curve = Math.min(76, distance * 0.44);
-  return `M ${x1} ${y1} C ${x1 + curve} ${y1}, ${x2 - curve} ${y2}, ${x2} ${y2}`;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const distance = Math.sqrt(dx*dx + dy*dy);
+  
+  const midX = (x1 + x2) / 2;
+  const midY = (y1 + y2) / 2;
+  
+  // Create a realistic flight-path arc (bows upward on the map)
+  const arcHeight = distance * 0.25;
+  
+  return `M ${x1} ${y1} Q ${midX} ${midY - arcHeight}, ${x2} ${y2}`;
 };
+
+const GEO_REGIONS = [
+  { id: 'us-west', regex: /(?:-la\b|\bla\b|us-west|losangeles|sanjose)/i, x: 260, y: 280, color: 'rgba(14, 165, 233, 0.4)' },
+  { id: 'us-east', regex: /(?:-ny\b|\bny\b|us-east|newyork|ashburn)/i, x: 380, y: 260, color: 'rgba(14, 165, 233, 0.4)' },
+  { id: 'eu', regex: /(?:-eu\b|\beu\b|-uk\b|\buk\b|-de\b|\bde\b|-fr\b|\bfr\b|frankfurt|london)/i, x: 650, y: 200, color: 'rgba(245, 158, 11, 0.4)' },
+  { id: 'hk', regex: /(?:-hk\b|\bhk\b|hongkong|香港|tw|taiwan)/i, x: 920, y: 340, color: 'rgba(16, 185, 129, 0.4)' },
+  { id: 'jp', regex: /(?:-jp\b|\bjp\b|tokyo|日本)/i, x: 1040, y: 260, color: 'rgba(16, 185, 129, 0.4)' },
+  { id: 'sg', regex: /(?:-sg\b|\bsg\b|singapore|狮城)/i, x: 900, y: 420, color: 'rgba(16, 185, 129, 0.4)' },
+  { id: 'entry', regex: /(?:入口|entry)/i, x: 860, y: 280, color: 'transparent' }, // Placed in China
+  { id: 'target', regex: /(?:外网|internet|target)/i, x: 180, y: 300, color: 'transparent' } // Placed in US West
+];
 
 const SegmentTopology = ({ data, onNodeDetail }) => {
   const [activeNodeId, setActiveNodeId] = useState(null);
@@ -106,35 +126,58 @@ const SegmentTopology = ({ data, onNodeDetail }) => {
   const layout = useMemo(() => {
     if (!layers) return null;
 
-    const maxNodes = layers.reduce((max, layer) => Math.max(max, Array.isArray(layer.nodes) ? layer.nodes.length : 0), 0);
-    const layerSpan = Array.from(
-      { length: Math.max(0, layers.length - 1) },
-      (_, gapIndex) => VIEWPORT.layerGaps[gapIndex] || VIEWPORT.defaultLayerGap
-    ).reduce((total, gap) => total + gap, 0);
-    const width = (VIEWPORT.paddingX * 2) + layerSpan + VIEWPORT.nodeWidth;
-    const height = VIEWPORT.paddingTop + VIEWPORT.paddingBottom + (maxNodes * VIEWPORT.nodeHeight) + (Math.max(0, maxNodes - 1) * VIEWPORT.nodeGap);
+    const width = 1200;
+    const height = 600;
     const nodeMap = new Map();
+    const regionNodes = new Map();
 
     layers.forEach((layer, layerIndex) => {
       const nodes = Array.isArray(layer.nodes) ? layer.nodes : [];
-      const columnHeight = (nodes.length * VIEWPORT.nodeHeight) + (Math.max(0, nodes.length - 1) * VIEWPORT.nodeGap);
-      const firstY = VIEWPORT.paddingTop + ((height - VIEWPORT.paddingTop - VIEWPORT.paddingBottom - columnHeight) / 2);
-      const x = getLayerX(layerIndex);
+      nodes.forEach((nodeId) => {
+        const name = data.agents?.[nodeId]?.name || nodeId;
+        let matchedRegion = null;
+        
+        for (const region of GEO_REGIONS) {
+          if (region.regex.test(name) || region.regex.test(nodeId)) {
+            matchedRegion = region;
+            break;
+          }
+        }
+        
+        if (!matchedRegion) {
+          let hash = 0;
+          for (let i = 0; i < nodeId.length; i++) hash = nodeId.charCodeAt(i) + ((hash << 5) - hash);
+          matchedRegion = { id: 'unknown', x: 500 + Math.abs(hash % 200), y: 200 + Math.abs(hash % 200) };
+        }
 
-      nodes.forEach((nodeId, nodeIndex) => {
-        nodeMap.set(nodeId, {
-          id: nodeId,
-          layerIndex,
-          x,
-          y: firstY + (nodeIndex * (VIEWPORT.nodeHeight + VIEWPORT.nodeGap)),
-          width: VIEWPORT.nodeWidth,
-          height: VIEWPORT.nodeHeight
+        const cluster = regionNodes.get(matchedRegion.id) || [];
+        cluster.push({ nodeId, region: matchedRegion, layerIndex });
+        regionNodes.set(matchedRegion.id, cluster);
+      });
+    });
+
+    regionNodes.forEach((cluster, regionId) => {
+      const { x: centerX, y: centerY } = cluster[0].region;
+      
+      const nodeWidth = 36;
+      const nodeHeight = 48;
+      const gapY = 32; // Vertical spacing between nodes in the same region
+      const totalHeight = cluster.length * nodeHeight + (cluster.length - 1) * gapY;
+      const startY = centerY - (totalHeight / 2) + (nodeHeight / 2);
+
+      cluster.forEach((item, index) => {
+        nodeMap.set(item.nodeId, {
+          id: item.nodeId,
+          layerIndex: item.layerIndex,
+          x: centerX - (nodeWidth / 2),
+          y: startY + index * (nodeHeight + gapY) - (nodeHeight / 2),
+          width: nodeWidth, height: nodeHeight
         });
       });
     });
 
-    return { width, height, nodeMap };
-  }, [layers]);
+    return { width, height, nodeMap, activeRegions: Array.from(regionNodes.keys()) };
+  }, [layers, data.agents]);
 
   if (!data || !data.agents) {
     return <div className="topology-empty">Loading dashboard data...</div>;
@@ -265,20 +308,27 @@ const SegmentTopology = ({ data, onNodeDetail }) => {
               <path d="M0,0 L0,6 L6,3 z" fill="rgba(239, 68, 68, 0.8)" />
             </marker>
           </defs>
-          {layers.map((layer, layerIndex) => {
-            const theme = LAYER_THEMES[layerIndex] || 'default';
-            const labelX = getLayerX(layerIndex);
 
-            return (
-              <g key={`matrix-layer-${layerIndex}`} className={`route-svg-layer route-layer-${theme}`}>
-                <line className="route-svg-layer-rail" x1={labelX - 18} y1="0" x2={labelX - 18} y2={layout.height} />
-                <text className="route-svg-layer-label" x={labelX + (VIEWPORT.nodeWidth / 2)} y="34">
-                  {layer.name || `Layer ${layerIndex + 1}`}
-                </text>
-                <line className="route-svg-layer-rule" x1={labelX + 18} y1="44" x2={labelX + VIEWPORT.nodeWidth - 18} y2="44" />
-              </g>
-            );
-          })}
+          {/* Glowing Map Regions */}
+          <g className="route-geo-regions">
+            {GEO_REGIONS.map(region => {
+              if (region.color === 'transparent') return null;
+              if (!layout.activeRegions.includes(region.id)) return null;
+              return (
+                <ellipse 
+                  key={`region-${region.id}`} 
+                  cx={region.x + 18} 
+                  cy={region.y + 24} 
+                  rx="90" 
+                  ry="60" 
+                  fill={region.color} 
+                  style={{ filter: 'blur(30px)', opacity: 0.8 }} 
+                />
+              );
+            })}
+          </g>
+
+          {/* Matrix layers removed for Geographic Layout */}
 
           <g className="route-svg-edges">
             {visibleEdges.map((edge, edgeIndex) => {
@@ -292,17 +342,17 @@ const SegmentTopology = ({ data, onNodeDetail }) => {
               const isFocusDimmed = activeNodeId && !activeEdgeKeys.has(key);
               const isHoverDimmed = spotlightEdgeKey && spotlightEdgeKey !== key;
               const isSpotlight = spotlightEdgeKey === key;
-              const x1 = from.x + from.width;
+              const x1 = from.x + 36;
               const y1 = from.y + (from.height / 2);
               const x2 = to.x;
               const y2 = to.y + (to.height / 2);
               const label = getLatencyLabel(latency);
               const labelWidth = Math.max(44, (label.length * 7) + 16);
               const issueSlot = issueSlots.get(key);
-              const labelX = ((x1 + x2 - 8) / 2) - (labelWidth / 2);
+              const labelX = ((x1 + x2) / 2) - (labelWidth / 2);
               const labelY = ((y1 + y2) / 2) - 10 + (issueSlot ? (issueSlot.index - ((issueSlot.count - 1) / 2)) * 16 : 0);
               const showPersistentLabel = label && !activeNodeId && !denseIssueMode && (state === 'warning' || state === 'critical');
-              const path = getLinePath(x1, y1, x2 - 8, y2);
+              const path = getLinePath(x1, y1, x2, y2);
 
               return (
                 <g key={`${key}-${edgeIndex}`} className={`route-edge route-edge-${state} ${isFocusDimmed ? 'is-focus-dimmed' : ''} ${isHoverDimmed ? 'is-hover-dimmed' : ''} ${isSpotlight ? 'is-spotlight' : ''}`}>
@@ -338,8 +388,8 @@ const SegmentTopology = ({ data, onNodeDetail }) => {
               const value = worst.latency.ping === 'fail' ? 'FAIL' : `${worst.latency.ping}ms`;
               const text = worst.routeCount > 1 ? `MAX ${value}` : value;
               const width = Math.max(48, (text.length * 6) + 16);
-              const x = rect.x + ((rect.width - width) / 2);
-              const y = rect.y - 25;
+              const x = rect.x + 18 - (width / 2);
+              const y = rect.y + 60;
               return (
                 <g
                   key={`worst-${nodeId}`}
@@ -394,15 +444,41 @@ const SegmentTopology = ({ data, onNodeDetail }) => {
                     onClick={() => handleNodeClick(nodeId)}
                     onKeyDown={(event) => handleNodeKeyDown(event, nodeId)}
                   >
-                    <rect className="route-svg-node-box" x={rect.x} y={rect.y} width={rect.width} height={rect.height} rx="7" />
                     {isVirtual ? (
-                      <Globe2 className="route-svg-node-icon" x={iconX} y={iconY} size={15} />
+                      <>
+                        <circle className="route-svg-node-box" cx={rect.x + 18} cy={rect.y + 24} r="24" />
+                        <Globe2 className="route-svg-node-icon" x={rect.x + 6} y={rect.y + 12} size={24} />
+                      </>
                     ) : (
-                      <Server className="route-svg-node-icon" x={iconX} y={iconY} size={15} />
+                      <>
+                        {/* Server Rack Body */}
+                        <rect className="route-svg-node-box" x={rect.x} y={rect.y} width={36} height={48} rx="6" />
+                        
+                        {/* Blades */}
+                        <rect className="route-svg-node-blade" x={rect.x + 6} y={rect.y + 8} width={24} height={6} rx="2" fill="rgba(255,255,255,0.15)" />
+                        <rect className="route-svg-node-blade" x={rect.x + 6} y={rect.y + 21} width={24} height={6} rx="2" fill="rgba(255,255,255,0.15)" />
+                        <rect className="route-svg-node-blade" x={rect.x + 6} y={rect.y + 34} width={24} height={6} rx="2" fill="rgba(255,255,255,0.15)" />
+
+                        {/* Active LEDs */}
+                        <circle cx={rect.x + 26} cy={rect.y + 11} r="1.5" fill="var(--healthy)" opacity={isOnline ? 0.9 : 0.2} />
+                        <circle cx={rect.x + 26} cy={rect.y + 24} r="1.5" fill="var(--healthy)" opacity={isOnline ? 0.9 : 0.2} />
+                        <circle cx={rect.x + 26} cy={rect.y + 37} r="1.5" fill="var(--healthy)" opacity={isOnline ? 0.9 : 0.2} />
+                      </>
                     )}
-                    <text className="route-svg-node-name" x={textX} y={textY}>{trimNodeLabel(label)}</text>
+                    
+                    {/* Floating Label */}
+                    <text className="route-svg-node-name" x={rect.x + 18} y={rect.y - 16}>{trimNodeLabel(label)}</text>
+                    
+                    {/* Status Badge */}
                     {isUuid && (
-                      <circle className={`route-svg-node-status ${isOnline ? 'online' : 'offline'}`} cx={statusX} cy={statusY} r="3.5" />
+                      <g transform={`translate(${rect.x + 34}, ${rect.y + 40})`} className="route-svg-node-status-group">
+                        <circle className={`route-svg-node-status ${isOnline ? 'online' : 'offline'}`} cx="0" cy="0" r="8" />
+                        {isOnline ? (
+                          <path d="M-3,0.5 L-1,2.5 L3,-1.5" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                        ) : (
+                          <path d="M-2.5,-2.5 L2.5,2.5 M-2.5,2.5 L2.5,-2.5" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" />
+                        )}
+                      </g>
                     )}
                   </g>
                 );
@@ -418,38 +494,44 @@ const SegmentTopology = ({ data, onNodeDetail }) => {
           <small>{hoveredEdge.latency?.ping === 'fail' ? '探测失败' : `丢包 ${hoveredEdge.latency?.loss || 0}%`}</small>
         </div>
       )}
-      {!activeNodeId && denseIssueMode && (
-        <section className="route-issue-tray" aria-label="异常线路">
-          <header>
-            <div><span>异常线路</span><small>悬停查看路径，点击固定高亮</small></div>
-            <b>{issueEdges.length}</b>
-          </header>
-          <div className="route-issue-grid">
-            {issueEdges.map((edge) => {
-              const key = `${edge.from}->${edge.to}`;
-              const latency = data.latencies?.[key];
-              const state = getLatencyState(latency);
-              return (
-                <button
-                  type="button"
-                  key={key}
-                  className={`focus-route-item issue-route-item ${state} ${pinnedEdgeKey === key ? 'is-pinned' : ''}`}
-                  onMouseEnter={() => setHoveredEdge({ key })}
-                  onMouseLeave={() => setHoveredEdge(null)}
-                  onFocus={() => setHoveredEdge({ key })}
-                  onBlur={() => setHoveredEdge(null)}
-                  onClick={() => setPinnedEdgeKey((current) => current === key ? null : key)}
-                  aria-pressed={pinnedEdgeKey === key}
-                >
-                  <i aria-hidden="true" />
-                  <span>{getNodeLabel(edge.from, data.agents[edge.from])} → {getNodeLabel(edge.to, data.agents[edge.to])}</span>
-                  <strong>{getLatencyLabel(latency)}</strong>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-      )}
+      {(() => {
+        const portalTarget = document.getElementById('issue-tray-portal');
+        if (!portalTarget || activeNodeId || !denseIssueMode) return null;
+        
+        return createPortal(
+          <section className="route-issue-tray glass-panel" aria-label="异常线路" style={{ position: 'relative', bottom: 'auto', left: 'auto', right: 'auto', width: '100%', margin: '0', background: 'rgba(255,255,255,0.02)' }}>
+            <header>
+              <div><span>异常线路</span><small>悬停查看路径</small></div>
+              <b>{issueEdges.length}</b>
+            </header>
+            <div className="route-issue-grid custom-scrollbar" style={{ gridTemplateColumns: '1fr', maxHeight: '250px', overflowY: 'auto' }}>
+              {issueEdges.map((edge) => {
+                const key = `${edge.from}->${edge.to}`;
+                const latency = data.latencies?.[key];
+                const state = getLatencyState(latency);
+                return (
+                  <button
+                    type="button"
+                    key={key}
+                    className={`focus-route-item issue-route-item ${state} ${pinnedEdgeKey === key ? 'is-pinned' : ''}`}
+                    onMouseEnter={() => setHoveredEdge({ key })}
+                    onMouseLeave={() => setHoveredEdge(null)}
+                    onFocus={() => setHoveredEdge({ key })}
+                    onBlur={() => setHoveredEdge(null)}
+                    onClick={() => setPinnedEdgeKey((current) => current === key ? null : key)}
+                    aria-pressed={pinnedEdgeKey === key}
+                  >
+                    <i aria-hidden="true" />
+                    <span>{getNodeLabel(edge.from, data.agents[edge.from])} → {getNodeLabel(edge.to, data.agents[edge.to])}</span>
+                    <strong>{getLatencyLabel(latency)}</strong>
+                  </button>
+                );
+              })}
+            </div>
+          </section>,
+          portalTarget
+        );
+      })()}
       {activeNodeId && (
         <div className="topology-focus-bar" aria-live="polite">
           <div className="focus-identity">
