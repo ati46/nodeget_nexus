@@ -246,8 +246,8 @@ export const fetchTaskLatencies = async (latencyMapping) => {
   const promises = Object.entries(latencyMapping).map(async ([edge, cronName]) => {
     try {
       const parts = edge.split('->');
-      const agentUuid = (parts[0] !== 'client') ? parts[0] : parts[1];
-      if (!isValidUuid(agentUuid)) return;
+      const agentUuid = isValidUuid(parts[0]) ? parts[0] : (isValidUuid(parts[1]) ? parts[1] : null);
+      if (!agentUuid) return;
 
       const fetchByType = async (type) => {
         const res = await rpcCall('task_query', {

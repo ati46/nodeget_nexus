@@ -1,14 +1,18 @@
-import React, { useEffect, useRef } from 'react';
-import { Activity, ArrowDown, ArrowUp, Cpu, HardDrive, MemoryStick, Network, X } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Activity, ArrowDown, ArrowUp, Cpu, HardDrive, MemoryStick, Network, X, Loader2 } from 'lucide-react';
 import { formatBytes, formatSpeed } from '../dataTransformer';
 import GlobalLatencyPanel from './GlobalLatencyPanel';
+import { fetchNodeTaskHistory } from '../apiClient';
 
 const DetailMetric = ({ icon: Icon, label, value, detail }) => (
   <article className="detail-metric"><Icon size={17} /><span>{label}</span><strong>{value}</strong><small>{detail}</small></article>
 );
 
-const NodeDetailModal = ({ agent, historyData, onClose }) => {
+const NodeDetailModal = ({ agent, onClose }) => {
   const closeRef = useRef(null);
+  const [nodeHistory, setNodeHistory] = useState(null);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+
   useEffect(() => {
     // [CAUTION] Global document state mutation; always restored on close.
     const previousOverflow = document.body.style.overflow;
@@ -18,6 +22,22 @@ const NodeDetailModal = ({ agent, historyData, onClose }) => {
     window.addEventListener('keydown', handleKeyDown);
     return () => { document.body.style.overflow = previousOverflow; window.removeEventListener('keydown', handleKeyDown); };
   }, [onClose]);
+
+  useEffect(() => {
+    if (!agent) return;
+    let cancelled = false;
+    setLoadingHistory(true);
+    fetchNodeTaskHistory(agent.id).then(history => {
+      if (!cancelled) {
+        setNodeHistory(history);
+        setLoadingHistory(false);
+      }
+    }).catch(e => {
+      if (!cancelled) setLoadingHistory(false);
+    });
+    return () => { cancelled = true; };
+  }, [agent]);
+
   if (!agent) return null;
   const ramPercent = agent.ram_total ? Math.round((agent.ram_used / agent.ram_total) * 100) : 0;
   const diskPercent = agent.disk_total ? Math.round((agent.disk_used / agent.disk_total) * 100) : 0;
@@ -34,7 +54,18 @@ const NodeDetailModal = ({ agent, historyData, onClose }) => {
             <DetailMetric icon={ArrowDown} label="实时入站" value={formatSpeed(agent.net_rx_speed)} detail={formatBytes(agent.net_rx_total)} />
             <DetailMetric icon={ArrowUp} label="实时出站" value={formatSpeed(agent.net_tx_speed)} detail={formatBytes(agent.net_tx_total)} />
           </div>
-          <section className="drawer-section"><div className="drawer-section-title"><Network size={16} /><h3>线路拨测历史</h3></div>{historyData && Object.keys(historyData).length ? <GlobalLatencyPanel historyData={historyData} hideTitle /> : <div className="quiet-state"><Activity size={22} /><strong>暂无历史拨测</strong></div>}</section>
+          <section className="drawer-section">
+            <div className="drawer-section-title"><Network size={16} /><h3>线路拨测历史</h3></div>
+            {loadingHistory ? (
+              <div className="quiet-state"><Loader2 size={22} className="spinner" /><strong>正在加载拨测数据...</strong></div>
+            ) : (
+              nodeHistory && Object.keys(nodeHistory).length ? (
+                <GlobalLatencyPanel historyData={nodeHistory} hideTitle />
+              ) : (
+                <div className="quiet-state"><Activity size={22} /><strong>该节点暂无历史拨测</strong></div>
+              )
+            )}
+          </section>
         </div>
       </section>
     </div>
@@ -42,3 +73,4 @@ const NodeDetailModal = ({ agent, historyData, onClose }) => {
 };
 
 export default NodeDetailModal;
+

@@ -253,7 +253,7 @@ const App = () => {
         <section className="panel assets-panel"><div className="section-heading"><div><p className="eyebrow">AGENT ROSTER</p><h2>节点资产</h2><p>优先显示离线节点和资源占用较高的节点。</p></div><span className="asset-count"><Server size={15} />{nodes.length} Agents</span></div><div className="asset-list">{nodes.map((node) => <NodeCard key={node.id} stats={node} onClick={() => setSelectedNode(node)} />)}</div></section>
       </main>
       <footer className="site-footer"><span>NodeGet Nexus</span><span>Read-only telemetry surface</span></footer>
-      {selectedNode && <NodeDetailModal agent={selectedNode} historyData={history24h} onClose={() => setSelectedNode(null)} />}
+      {selectedNode && <NodeDetailModal agent={selectedNode} onClose={() => setSelectedNode(null)} />}
     </div>
   );
 };

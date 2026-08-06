@@ -1,0 +1,7 @@
+{
+  "name": "NodeGet Nexus Dashboard",
+  "short": "nexus",
+  "description": "Real-time cyberpunk monitoring dashboard for NodeGet",
+  "version": "1.0.0",
+  "author": "Antigravity"
+}
