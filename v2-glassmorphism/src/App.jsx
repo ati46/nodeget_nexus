@@ -157,21 +157,32 @@ const App = () => {
         }
 
         const uuidList = Array.from(ids);
-        const [metadata, staticData, dynamicData, latencies, history] = await Promise.all([
+        const [metadata, staticData, dynamicData] = await Promise.all([
           fetchAgentMetadata(uuidList),
           fetchStaticData(uuidList),
           fetchDynamicData(uuidList),
-          fetchTaskLatencies(active.latency_tasks),
-          fetch24hTaskHistory(active.latency_tasks),
         ]);
 
         if (cancelled) return;
         snapshotRef.current = { metadata, staticData, uuidList };
-        latencyRef.current = latencies;
+        latencyRef.current = {};
         setConfig(active);
-        setHistory24h(history);
-        setData(transformData(metadata, staticData, dynamicData, active, latencies));
+        setData(transformData(metadata, staticData, dynamicData, active, {}));
         setLoading(false);
+
+        // Fetch latencies and history asynchronously without blocking the initial render
+        fetchTaskLatencies(active.latency_tasks).then(latencies => {
+          if (!cancelled) {
+            latencyRef.current = latencies;
+            setData(current => current ? { ...current, latencies } : current);
+          }
+        }).catch(err => console.warn('Init latency fetch failed:', err));
+
+        fetch24hTaskHistory(active.latency_tasks).then(history => {
+          if (!cancelled) {
+            setHistory24h(history);
+          }
+        }).catch(err => console.warn('Init history fetch failed:', err));
       } catch (err) {
         if (!cancelled) {
           console.error('Init Error:', err);

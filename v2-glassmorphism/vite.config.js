@@ -6,5 +6,8 @@ export default defineConfig({
   plugins: [react()],
   optimizeDeps: {
     include: ['prop-types']
+  },
+  build: {
+    chunkSizeWarningLimit: 1500,
   }
 })
