@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowRight, Globe2, Server, X } from 'lucide-react';
-import { ComposableMap, Geographies, Geography } from 'react-simple-maps';
+import { ArrowRight, Globe2, Server, X, User, Cloud } from 'lucide-react';
+import { ComposableMap, Geographies, Geography, ZoomableGroup } from 'react-simple-maps';
 import { geoEquirectangular } from 'd3-geo';
 import topoData from '../assets/features.json';
 
@@ -101,6 +101,8 @@ const RAW_GEO_REGIONS = [
 
 const GEO_REGIONS = RAW_GEO_REGIONS.map(r => {
   const [x, y] = mapProjection([r.lon, r.lat]);
+  if (r.id === 'entry') return { ...r, x: 1400, y: 100 };
+  if (r.id === 'target') return { ...r, x: 200, y: 100 };
   return { ...r, x, y };
 });
 
@@ -206,6 +208,7 @@ const SegmentTopology = ({ data, onNodeDetail }) => {
       cluster.forEach((item, index) => {
         nodeMap.set(item.nodeId, {
           id: item.nodeId,
+          regionId: regionId,
           layerIndex: item.layerIndex,
           x: centerX - (nodeWidth / 2),
           y: startY + index * (nodeHeight + gapY) - (nodeHeight / 2),
@@ -345,7 +348,8 @@ const SegmentTopology = ({ data, onNodeDetail }) => {
             style={{ width: '100%', height: '100%' }}
             viewBox={`0 0 ${layout.width} ${layout.height}`}
           >
-            <Geographies geography={topoData}>
+            <ZoomableGroup zoom={1} maxZoom={5} translateExtent={[[0, 0], [layout.width, layout.height]]}>
+              <Geographies geography={topoData}>
               {({ geographies }) =>
                 geographies.map((geo) => {
                   const countryName = geo.properties.name;
@@ -378,6 +382,9 @@ const SegmentTopology = ({ data, onNodeDetail }) => {
             </marker>
             <marker id="arrow-critical" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
               <path d="M0,0 L0,6 L6,3 z" fill="rgba(239, 68, 68, 0.8)" />
+            </marker>
+            <marker id="arrow-unknown" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L6,3 z" fill="rgba(255, 255, 255, 0.3)" />
             </marker>
           </defs>
 
@@ -436,9 +443,10 @@ const SegmentTopology = ({ data, onNodeDetail }) => {
               const isFocusDimmed = activeNodeId && !activeEdgeKeys.has(key);
               const isHoverDimmed = spotlightEdgeKey && spotlightEdgeKey !== key;
               const isSpotlight = spotlightEdgeKey === key;
-              const x1 = from.x + 36;
+              const isRightToLeft = from.x > to.x;
+              const x1 = isRightToLeft ? from.x : from.x + from.width;
               const y1 = from.y + (from.height / 2);
-              const x2 = to.x;
+              const x2 = isRightToLeft ? to.x + to.width : to.x;
               const y2 = to.y + (to.height / 2);
               const label = getLatencyLabel(latency);
               const labelWidth = Math.max(44, (label.length * 7) + 16);
@@ -450,7 +458,7 @@ const SegmentTopology = ({ data, onNodeDetail }) => {
 
               return (
                 <g key={`${key}-${edgeIndex}`} className={`route-edge route-edge-${state} ${isFocusDimmed ? 'is-focus-dimmed' : ''} ${isHoverDimmed ? 'is-hover-dimmed' : ''} ${isSpotlight ? 'is-spotlight' : ''}`}>
-                  <path className="route-edge-path" d={path} />
+                  <path className="route-edge-path" d={path} markerEnd={`url(#arrow-${state})`} />
                   <path className="route-edge-flow" d={path} />
                   <path
                     className="route-edge-hit"
@@ -463,7 +471,6 @@ const SegmentTopology = ({ data, onNodeDetail }) => {
                     role="button"
                     aria-label={`${getNodeLabel(edge.from, data.agents[edge.from])} 到 ${getNodeLabel(edge.to, data.agents[edge.to])}，${label || '无延迟数据'}`}
                   />
-                  <polygon className="route-edge-arrow" points={`${x2 - 8},${y2 - 4} ${x2},${y2} ${x2 - 8},${y2 + 4}`} />
                   {showPersistentLabel && (
                     <g className="route-edge-label" transform={`translate(${labelX} ${labelY})`}>
                       <rect width={labelWidth} height="20" rx="5" />
@@ -515,7 +522,7 @@ const SegmentTopology = ({ data, onNodeDetail }) => {
                 const stats = data.agents[nodeId];
                 const label = getNodeLabel(nodeId, stats);
                 const isUuid = isRealUuid(nodeId);
-                const isVirtual = !isUuid;
+                const isVirtual = !isUuid || rect.regionId === 'entry' || rect.regionId === 'target';
                 const isOnline = stats && stats.status !== 'offline';
                 const isActive = activeNodeId === nodeId;
                 const isEdgeEndpoint = spotlightEdge && (spotlightEdge.from === nodeId || spotlightEdge.to === nodeId);
@@ -541,7 +548,13 @@ const SegmentTopology = ({ data, onNodeDetail }) => {
                     {isVirtual ? (
                       <>
                         <circle className="route-svg-node-box" cx={rect.x + 18} cy={rect.y + 24} r="24" />
-                        <Globe2 className="route-svg-node-icon" x={rect.x + 6} y={rect.y + 12} size={24} />
+                        {rect.regionId === 'entry' ? (
+                          <User className="route-svg-node-icon" x={rect.x + 6} y={rect.y + 12} size={24} />
+                        ) : rect.regionId === 'target' ? (
+                          <Cloud className="route-svg-node-icon" x={rect.x + 6} y={rect.y + 12} size={24} />
+                        ) : (
+                          <Globe2 className="route-svg-node-icon" x={rect.x + 6} y={rect.y + 12} size={24} />
+                        )}
                       </>
                     ) : (
                       <>
@@ -579,6 +592,7 @@ const SegmentTopology = ({ data, onNodeDetail }) => {
               });
             })}
           </g>
+          </ZoomableGroup>
           </ComposableMap>
         </div>
       </div>
