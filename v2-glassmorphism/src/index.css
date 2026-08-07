@@ -68,8 +68,9 @@ button, input { font: inherit; color: inherit; }
   
   /* Volumetric Glass Shell */
   background: rgba(10, 12, 20, var(--glass-opacity-app, 0.05));
-  backdrop-filter: blur(var(--glass-blur-app, 4px));
   -webkit-backdrop-filter: blur(var(--glass-blur-app, 4px));
+  backdrop-filter: blur(var(--glass-blur-app, 4px));
+
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-top: 1px solid rgba(255, 255, 255, 0.25);
   border-left: 1px solid rgba(255, 255, 255, 0.15);
@@ -101,8 +102,9 @@ button, input { font: inherit; color: inherit; }
 /* Base Panel (Layered Glassmorphism) */
 .glass-panel {
   background: rgba(255, 255, 255, var(--glass-opacity-panel, 0.01));
-  backdrop-filter: blur(var(--glass-blur-panel, 2px));
   -webkit-backdrop-filter: blur(var(--glass-blur-panel, 2px));
+  backdrop-filter: blur(var(--glass-blur-panel, 2px));
+
   border: 1px solid rgba(255,255,255,0.04);
   border-top: 1px solid rgba(255,255,255,0.25);
   border-radius: 20px;
@@ -443,8 +445,9 @@ button, input { font: inherit; color: inherit; }
   position: fixed; inset: 0; z-index: 999;
   display: flex; justify-content: flex-end;
   background: rgba(3, 4, 8, 0.6);
-  backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+
   animation: overlayFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 @keyframes overlayFadeIn {
@@ -560,8 +563,9 @@ button, input { font: inherit; color: inherit; }
   position: absolute;
   bottom: 0; left: 0; right: 0;
   background: rgba(12, 14, 25, var(--glass-opacity-drawer, 0.05));
-  backdrop-filter: blur(var(--glass-blur-panel, 2px));
   -webkit-backdrop-filter: blur(var(--glass-blur-panel, 2px));
+  backdrop-filter: blur(var(--glass-blur-panel, 2px));
+
   border-top: 1px solid var(--border-light);
   padding: 16px 24px;
   display: flex;
@@ -754,8 +758,9 @@ button, input { font: inherit; color: inherit; }
   display: flex;
   justify-content: flex-end;
   background: rgba(10, 12, 20, var(--glass-opacity-drawer, 0.05));
-  backdrop-filter: blur(var(--glass-blur-drawer, 4px));
   -webkit-backdrop-filter: blur(var(--glass-blur-drawer, 4px));
+  backdrop-filter: blur(var(--glass-blur-drawer, 4px));
+
 }
 
 .node-drawer {
@@ -1008,8 +1013,9 @@ button, input { font: inherit; color: inherit; }
   box-shadow: 0 12px 35px rgba(0, 0, 0, 0.6);
   pointer-events: none;
   color: var(--text-primary);
-  backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+
   border-radius: 8px;
 }
 

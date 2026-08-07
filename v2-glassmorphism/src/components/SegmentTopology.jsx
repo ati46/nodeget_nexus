@@ -352,6 +352,12 @@ const SegmentTopology = ({ data, onNodeDetail, config, hoveredNodeId, hoveredAle
     });
   };
 
+  const [portalTarget, setPortalTarget] = useState(null);
+
+  useEffect(() => {
+    setPortalTarget(document.getElementById('issue-tray-portal'));
+  }, []);
+
   const clearNodeFocus = () => {
     // [CAUTION] Local visual selection only; monitoring data is not mutated.
     setActiveNodeId(null);
@@ -658,7 +664,6 @@ const SegmentTopology = ({ data, onNodeDetail, config, hoveredNodeId, hoveredAle
         </div>
       )}
       {(() => {
-        const portalTarget = document.getElementById('issue-tray-portal');
         if (!portalTarget || activeNodeId || !denseIssueMode) return null;
         
         return createPortal(

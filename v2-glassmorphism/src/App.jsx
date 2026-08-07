@@ -96,7 +96,10 @@ const App = () => {
   const [demoMode, setDemoMode] = useState(() => new URLSearchParams(window.location.search).get('demo') === '1');
   const [selectedNode, setSelectedNode] = useState(null);
   const [activeTab, setActiveTab] = useState('Dashboard');
-  const [glassLevel, setGlassLevel] = useState(() => parseInt(getCookie('glassLevel') || '10', 10));
+  const [glassLevel, setGlassLevel] = useState(() => {
+    const val = parseInt(getCookie('glassLevel'), 10);
+    return isNaN(val) ? 80 : val;
+  });
   const [hoveredNodeId, setHoveredNodeId] = useState(null);
   const [hoveredAlertEdge, setHoveredAlertEdge] = useState(null);
   const snapshotRef = React.useRef(null);
