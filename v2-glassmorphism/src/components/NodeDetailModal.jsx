@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Activity, ArrowDown, ArrowUp, Cpu, HardDrive, MemoryStick, Network, X, Loader2 } from 'lucide-react';
 import { formatBytes, formatSpeed } from '../dataTransformer';
 import GlobalLatencyPanel from './GlobalLatencyPanel';
@@ -40,7 +41,7 @@ const NodeDetailModal = ({ agent, onClose }) => {
   if (!agent) return null;
   const ramPercent = agent.ram_total ? Math.round((agent.ram_used / agent.ram_total) * 100) : 0;
   const diskPercent = agent.disk_total ? Math.round((agent.disk_used / agent.disk_total) * 100) : 0;
-  return (
+  return createPortal(
     <div className="modal-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className="node-drawer" role="dialog" aria-modal="true" aria-labelledby="node-detail-title">
         <header className="drawer-header"><div><p className="eyebrow">AGENT DETAIL</p><h2 id="node-detail-title"><i className={`node-status ${agent.status}`} />{agent.name}</h2><p>{agent.id}</p></div><button ref={closeRef} type="button" className="icon-button" onClick={onClose} aria-label="关闭节点详情"><X size={20} /></button></header>
@@ -67,7 +68,8 @@ const NodeDetailModal = ({ agent, onClose }) => {
           </section>
         </div>
       </section>
-    </div>
+    </div>,
+    document.body
   );
 };
 
