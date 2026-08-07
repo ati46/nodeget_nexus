@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowRight, Globe2, Server, X } from 'lucide-react';
+import { ComposableMap, Geographies, Geography } from 'react-simple-maps';
+import { geoEquirectangular } from 'd3-geo';
+import topoData from '../assets/features.json';
 
 const VIRTUAL_NODE_LABELS = {
   client: 'Client',
@@ -79,16 +82,27 @@ const getLinePath = (x1, y1, x2, y2) => {
   return `M ${x1} ${y1} Q ${midX} ${midY - arcHeight}, ${x2} ${y2}`;
 };
 
-const GEO_REGIONS = [
-  { id: 'us-west', regex: /(?:-la\b|\bla\b|us-west|losangeles|sanjose)/i, x: 260, y: 280, color: 'rgba(14, 165, 233, 0.4)' },
-  { id: 'us-east', regex: /(?:-ny\b|\bny\b|us-east|newyork|ashburn)/i, x: 380, y: 260, color: 'rgba(14, 165, 233, 0.4)' },
-  { id: 'eu', regex: /(?:-eu\b|\beu\b|-uk\b|\buk\b|-de\b|\bde\b|-fr\b|\bfr\b|frankfurt|london)/i, x: 650, y: 200, color: 'rgba(245, 158, 11, 0.4)' },
-  { id: 'hk', regex: /(?:-hk\b|\bhk\b|hongkong|香港|tw|taiwan)/i, x: 920, y: 340, color: 'rgba(16, 185, 129, 0.4)' },
-  { id: 'jp', regex: /(?:-jp\b|\bjp\b|tokyo|日本)/i, x: 1040, y: 260, color: 'rgba(16, 185, 129, 0.4)' },
-  { id: 'sg', regex: /(?:-sg\b|\bsg\b|singapore|狮城)/i, x: 900, y: 420, color: 'rgba(16, 185, 129, 0.4)' },
-  { id: 'entry', regex: /(?:入口|entry)/i, x: 860, y: 280, color: 'transparent' }, // Placed in China
-  { id: 'target', regex: /(?:外网|internet|target)/i, x: 180, y: 300, color: 'transparent' } // Placed in US West
+const mapWidth = 1600;
+const mapHeight = 700;
+const mapProjection = geoEquirectangular()
+  .scale(250)
+  .translate([mapWidth / 2, mapHeight / 2 + 140]);
+
+const RAW_GEO_REGIONS = [
+  { id: 'us-west', regex: /(?:-la\b|\bla\b|us-west|losangeles|sanjose)/i, lon: -118.24, lat: 34.05, color: 'rgba(14, 165, 233, 0.65)', country: 'United States of America', glow: 'var(--accent-cyan)' },
+  { id: 'us-east', regex: /(?:-ny\b|\bny\b|us-east|newyork|ashburn)/i, lon: -74.00, lat: 40.71, color: 'rgba(14, 165, 233, 0.65)', country: 'United States of America', glow: 'var(--accent-cyan)' },
+  { id: 'eu', regex: /(?:-eu\b|\beu\b|-uk\b|\buk\b|-de\b|\bde\b|-fr\b|\bfr\b|frankfurt|london)/i, lon: 8.68, lat: 50.11, color: 'rgba(245, 158, 11, 0.65)', country: 'Germany', glow: 'var(--warning)' },
+  { id: 'hk', regex: /(?:-hk\b|\bhk\b|hongkong|香港|tw|taiwan)/i, lon: 114.16, lat: 22.31, color: 'rgba(16, 185, 129, 0.65)', country: 'China', glow: 'var(--healthy)' },
+  { id: 'jp', regex: /(?:-jp\b|\bjp\b|tokyo|日本)/i, lon: 139.69, lat: 35.68, color: 'rgba(16, 185, 129, 0.65)', country: 'Japan', glow: 'var(--healthy)' },
+  { id: 'sg', regex: /(?:-sg\b|\bsg\b|singapore|狮城)/i, lon: 103.81, lat: 1.35, color: 'rgba(16, 185, 129, 0.65)', country: 'Malaysia', glow: 'var(--healthy)' },
+  { id: 'entry', regex: /(?:入口|entry)/i, lon: 116.40, lat: 39.90, color: 'transparent', country: 'China', glow: 'var(--healthy)' },
+  { id: 'target', regex: /(?:外网|internet|target)/i, lon: -122.41, lat: 37.77, color: 'transparent', country: 'United States of America', glow: 'var(--accent-cyan)' }
 ];
+
+const GEO_REGIONS = RAW_GEO_REGIONS.map(r => {
+  const [x, y] = mapProjection([r.lon, r.lat]);
+  return { ...r, x, y };
+});
 
 const SegmentTopology = ({ data, onNodeDetail }) => {
   const [activeNodeId, setActiveNodeId] = useState(null);
@@ -126,14 +140,17 @@ const SegmentTopology = ({ data, onNodeDetail }) => {
   const layout = useMemo(() => {
     if (!layers) return null;
 
-    const width = 1200;
-    const height = 600;
+    const width = 1600;
+    const height = 700;
     const nodeMap = new Map();
     const regionNodes = new Map();
+    const activeRegions = new Set();
+    const explicitlyMappedNodes = new Set();
 
     layers.forEach((layer, layerIndex) => {
       const nodes = Array.isArray(layer.nodes) ? layer.nodes : [];
       nodes.forEach((nodeId) => {
+        explicitlyMappedNodes.add(nodeId);
         const name = data.agents?.[nodeId]?.name || nodeId;
         let matchedRegion = null;
         
@@ -153,8 +170,29 @@ const SegmentTopology = ({ data, onNodeDetail }) => {
         const cluster = regionNodes.get(matchedRegion.id) || [];
         cluster.push({ nodeId, region: matchedRegion, layerIndex });
         regionNodes.set(matchedRegion.id, cluster);
+        activeRegions.add(matchedRegion.id);
       });
     });
+
+    const backgroundNodes = [];
+    if (data.agents) {
+      Object.keys(data.agents).forEach(nodeId => {
+        if (!explicitlyMappedNodes.has(nodeId)) {
+          const name = data.agents[nodeId].name || nodeId;
+          let matchedRegion = null;
+          for (const region of GEO_REGIONS) {
+            if (region.regex.test(name) || region.regex.test(nodeId)) {
+              matchedRegion = region;
+              break;
+            }
+          }
+          if (matchedRegion) {
+            activeRegions.add(matchedRegion.id);
+            backgroundNodes.push({ nodeId, region: matchedRegion });
+          }
+        }
+      });
+    }
 
     regionNodes.forEach((cluster, regionId) => {
       const { x: centerX, y: centerY } = cluster[0].region;
@@ -176,7 +214,7 @@ const SegmentTopology = ({ data, onNodeDetail }) => {
       });
     });
 
-    return { width, height, nodeMap, activeRegions: Array.from(regionNodes.keys()) };
+    return { width, height, nodeMap, activeRegions: Array.from(activeRegions), backgroundNodes };
   }, [layers, data.agents]);
 
   if (!data || !data.agents) {
@@ -288,15 +326,49 @@ const SegmentTopology = ({ data, onNodeDetail }) => {
   };
   return (
     <div className="route-matrix-shell">
-      <div className="route-matrix-scroll custom-scrollbar">
-        <svg
-          className="route-matrix-svg"
-          viewBox={`0 0 ${layout.width} ${layout.height}`}
-          width={layout.width}
-          height={layout.height}
-          role="img"
-          aria-label="Routing topology"
-        >
+      <div 
+        className="route-matrix-scroll custom-scrollbar" 
+        style={{ 
+          position: 'relative', 
+          width: '100%', 
+          height: '100%',
+          overflow: 'hidden' 
+        }}
+      >
+        
+        {/* Vector Background Map */}
+        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0.7 }}>
+          <ComposableMap 
+            projection={mapProjection} 
+            width={layout.width} 
+            height={layout.height} 
+            style={{ width: '100%', height: '100%' }}
+            viewBox={`0 0 ${layout.width} ${layout.height}`}
+          >
+            <Geographies geography={topoData}>
+              {({ geographies }) =>
+                geographies.map((geo) => {
+                  const countryName = geo.properties.name;
+                  const activeRegion = GEO_REGIONS.find(r => r.country === countryName && layout.activeRegions.includes(r.id));
+                  const isHighlighted = !!activeRegion;
+                  
+                  return (
+                    <Geography
+                      key={geo.rsmKey}
+                      geography={geo}
+                      fill={isHighlighted ? activeRegion.color : 'rgba(255,255,255,0.015)'}
+                      stroke={isHighlighted ? activeRegion.glow : 'rgba(255,255,255,0.06)'}
+                      strokeWidth={isHighlighted ? 1.5 : 0.5}
+                      style={{
+                        default: { outline: 'none', filter: isHighlighted ? `drop-shadow(0 0 16px ${activeRegion.glow})` : 'none', opacity: isHighlighted ? 0.7 : 1 },
+                        hover: { outline: 'none', fill: isHighlighted ? activeRegion.color : 'rgba(255,255,255,0.03)' },
+                        pressed: { outline: 'none' }
+                      }}
+                    />
+                  );
+                })
+              }
+            </Geographies>
           <defs>
             <marker id="arrow-healthy" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
               <path d="M0,0 L0,6 L6,3 z" fill="rgba(16, 185, 129, 0.8)" />
@@ -321,8 +393,30 @@ const SegmentTopology = ({ data, onNodeDetail }) => {
                   cy={region.y + 24} 
                   rx="90" 
                   ry="60" 
-                  fill={region.color} 
-                  style={{ filter: 'blur(30px)', opacity: 0.8 }} 
+                  fill={region.glow} 
+                  style={{ filter: 'blur(40px)', opacity: 0.25 }} 
+                />
+              );
+            })}
+          </g>
+
+          {/* Background Micro Nodes */}
+          <g className="route-svg-background-nodes">
+            {layout.backgroundNodes.map((bNode) => {
+              let hash = 0;
+              for (let j = 0; j < bNode.nodeId.length; j++) hash = bNode.nodeId.charCodeAt(j) + ((hash << 5) - hash);
+              const dx = (hash % 100) - 50;
+              const dy = ((hash >> 4) % 60) - 30;
+              const isOnline = data.agents[bNode.nodeId]?.status !== 'offline';
+              return (
+                <circle 
+                  key={`bg-${bNode.nodeId}`} 
+                  cx={bNode.region.x + 18 + dx} 
+                  cy={bNode.region.y + 24 + dy} 
+                  r="2.5" 
+                  fill={isOnline ? 'var(--healthy)' : 'rgba(255,255,255,0.2)'} 
+                  opacity={isOnline ? 0.8 : 0.3}
+                  style={{ filter: isOnline ? 'drop-shadow(0 0 6px var(--healthy))' : 'none' }}
                 />
               );
             })}
@@ -485,7 +579,8 @@ const SegmentTopology = ({ data, onNodeDetail }) => {
               });
             })}
           </g>
-        </svg>
+          </ComposableMap>
+        </div>
       </div>
       {hoveredEdge?.x !== undefined && hoveredEdge.showTooltip && (
         <div className={`route-tooltip route-tooltip-${hoveredEdge.state}`} style={{ left: hoveredEdge.x, top: hoveredEdge.y }}>

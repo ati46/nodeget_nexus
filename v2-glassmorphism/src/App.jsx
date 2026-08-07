@@ -75,6 +75,17 @@ const formatGbMb = (mb) => {
   return Math.round(mb) + ' MB';
 };
 
+const setCookie = (name, value, days = 365) => {
+  const d = new Date();
+  d.setTime(d.getTime() + (days * 24 * 60 * 60 * 1000));
+  document.cookie = `${name}=${value};expires=${d.toUTCString()};path=/`;
+};
+
+const getCookie = (name) => {
+  const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+  return match ? match[2] : null;
+};
+
 const App = () => {
   const [config, setConfig] = useState(null);
   const [data, setData] = useState(null);
@@ -84,8 +95,20 @@ const App = () => {
   const [demoMode, setDemoMode] = useState(() => new URLSearchParams(window.location.search).get('demo') === '1');
   const [selectedNode, setSelectedNode] = useState(null);
   const [activeTab, setActiveTab] = useState('Dashboard');
+  const [glassLevel, setGlassLevel] = useState(() => parseInt(getCookie('glassLevel') || '10', 10));
   const snapshotRef = React.useRef(null);
   const latencyRef = React.useRef({});
+
+  useEffect(() => {
+    setCookie('glassLevel', glassLevel);
+    const root = document.documentElement;
+    root.style.setProperty('--glass-opacity-app', (glassLevel * 0.003).toFixed(3));
+    root.style.setProperty('--glass-blur-app', `${(glassLevel * 0.2).toFixed(1)}px`);
+    root.style.setProperty('--glass-opacity-panel', (glassLevel * 0.0005).toFixed(4));
+    root.style.setProperty('--glass-blur-panel', `${(glassLevel * 0.1).toFixed(1)}px`);
+    root.style.setProperty('--glass-opacity-drawer', (glassLevel * 0.002).toFixed(3));
+    root.style.setProperty('--glass-blur-drawer', `${(glassLevel * 0.15).toFixed(1)}px`);
+  }, [glassLevel]);
 
   useEffect(() => {
     let cancelled = false;
@@ -365,6 +388,15 @@ const App = () => {
           </div>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.05)', padding: '6px 12px', borderRadius: '20px', border: '1px solid var(--border-light)' }}>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Opacity</span>
+              <input 
+                type="range" min="0" max="100" value={glassLevel}
+                onChange={(e) => setGlassLevel(Number(e.target.value))}
+                style={{ width: '80px', accentColor: 'var(--accent-cyan)' }}
+              />
+            </div>
+            
             <Activity size={20} color="var(--text-secondary)" />
             <div style={{ position: 'relative' }}>
               <Bell size={20} color="var(--text-secondary)" />
