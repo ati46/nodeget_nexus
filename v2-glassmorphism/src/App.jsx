@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Activity, AlertTriangle, ArrowRight, LayoutDashboard, Server, Settings, Search, Bell, Monitor, BarChart3, ChevronRight, Cpu, ArrowDown, ArrowUp, HardDrive, Network, Clock3 } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowRight, LayoutDashboard, Server, Settings, Search, Bell, Monitor, BarChart3, ChevronRight, Cpu, ArrowDown, ArrowUp, HardDrive, Network, Clock3, X } from 'lucide-react';
 import { RadialBarChart, RadialBar, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import SegmentTopology from './components/SegmentTopology';
 import NodeCard from './components/NodeCard';

@@ -101,8 +101,8 @@ const RAW_GEO_REGIONS = [
 
 const GEO_REGIONS = RAW_GEO_REGIONS.map(r => {
   const [x, y] = mapProjection([r.lon, r.lat]);
-  if (r.id === 'entry') return { ...r, x: 1400, y: 100 };
-  if (r.id === 'target') return { ...r, x: 200, y: 100 };
+  if (r.id === 'entry') return { ...r, x: 1500, y: 100 };
+  if (r.id === 'target') return { ...r, x: 100, y: 100 };
   return { ...r, x, y };
 });
 
@@ -199,19 +199,30 @@ const SegmentTopology = ({ data, onNodeDetail }) => {
     regionNodes.forEach((cluster, regionId) => {
       const { x: centerX, y: centerY } = cluster[0].region;
       
-      const nodeWidth = 36;
-      const nodeHeight = 48;
-      const gapY = 32; // Vertical spacing between nodes in the same region
-      const totalHeight = cluster.length * nodeHeight + (cluster.length - 1) * gapY;
-      const startY = centerY - (totalHeight / 2) + (nodeHeight / 2);
+      const nodeWidth = 28;
+      const nodeHeight = 40;
+      
+      // Auto-spread horizontally, sorted by route order (layerIndex)
+      // Since data flows Right-to-Left, highest layer index (closest to target) is on the left
+      cluster.sort((a, b) => b.layerIndex - a.layerIndex);
+      
+      const gapX = 48; // Horizontal spacing
+      
+      const totalWidth = cluster.length * nodeWidth + (cluster.length - 1) * gapX;
+      
+      const startX = centerX - (totalWidth / 2) + (nodeWidth / 2);
+      const startY = centerY;
 
       cluster.forEach((item, index) => {
+        // slightly stagger Y to prevent perfectly straight overlapping lines
+        const staggerY = cluster.length > 1 ? (index % 2 === 0 ? -12 : 12) : 0;
+        
         nodeMap.set(item.nodeId, {
           id: item.nodeId,
           regionId: regionId,
           layerIndex: item.layerIndex,
-          x: centerX - (nodeWidth / 2),
-          y: startY + index * (nodeHeight + gapY) - (nodeHeight / 2),
+          x: startX + index * (nodeWidth + gapX) - (nodeWidth / 2),
+          y: startY + staggerY - (nodeHeight / 2),
           width: nodeWidth, height: nodeHeight
         });
       });
@@ -547,38 +558,38 @@ const SegmentTopology = ({ data, onNodeDetail }) => {
                   >
                     {isVirtual ? (
                       <>
-                        <circle className="route-svg-node-box" cx={rect.x + 18} cy={rect.y + 24} r="24" />
+                        <circle className="route-svg-node-box" cx={rect.x + rect.width / 2} cy={rect.y + rect.height / 2} r="18" />
                         {rect.regionId === 'entry' ? (
-                          <User className="route-svg-node-icon" x={rect.x + 6} y={rect.y + 12} size={24} />
+                          <User className="route-svg-node-icon" x={rect.x + rect.width / 2 - 10} y={rect.y + rect.height / 2 - 10} size={20} />
                         ) : rect.regionId === 'target' ? (
-                          <Cloud className="route-svg-node-icon" x={rect.x + 6} y={rect.y + 12} size={24} />
+                          <Cloud className="route-svg-node-icon" x={rect.x + rect.width / 2 - 10} y={rect.y + rect.height / 2 - 10} size={20} />
                         ) : (
-                          <Globe2 className="route-svg-node-icon" x={rect.x + 6} y={rect.y + 12} size={24} />
+                          <Globe2 className="route-svg-node-icon" x={rect.x + rect.width / 2 - 10} y={rect.y + rect.height / 2 - 10} size={20} />
                         )}
                       </>
                     ) : (
                       <>
                         {/* Server Rack Body */}
-                        <rect className="route-svg-node-box" x={rect.x} y={rect.y} width={36} height={48} rx="6" />
+                        <rect className="route-svg-node-box" x={rect.x} y={rect.y} width={rect.width} height={rect.height} rx="4" />
                         
                         {/* Blades */}
-                        <rect className="route-svg-node-blade" x={rect.x + 6} y={rect.y + 8} width={24} height={6} rx="2" fill="rgba(255,255,255,0.15)" />
-                        <rect className="route-svg-node-blade" x={rect.x + 6} y={rect.y + 21} width={24} height={6} rx="2" fill="rgba(255,255,255,0.15)" />
-                        <rect className="route-svg-node-blade" x={rect.x + 6} y={rect.y + 34} width={24} height={6} rx="2" fill="rgba(255,255,255,0.15)" />
+                        <rect className="route-svg-node-blade" x={rect.x + 4} y={rect.y + 6} width={rect.width - 8} height="5" rx="1.5" fill="rgba(255,255,255,0.15)" />
+                        <rect className="route-svg-node-blade" x={rect.x + 4} y={rect.y + 16} width={rect.width - 8} height="5" rx="1.5" fill="rgba(255,255,255,0.15)" />
+                        <rect className="route-svg-node-blade" x={rect.x + 4} y={rect.y + 26} width={rect.width - 8} height="5" rx="1.5" fill="rgba(255,255,255,0.15)" />
 
                         {/* Active LEDs */}
-                        <circle cx={rect.x + 26} cy={rect.y + 11} r="1.5" fill="var(--healthy)" opacity={isOnline ? 0.9 : 0.2} />
-                        <circle cx={rect.x + 26} cy={rect.y + 24} r="1.5" fill="var(--healthy)" opacity={isOnline ? 0.9 : 0.2} />
-                        <circle cx={rect.x + 26} cy={rect.y + 37} r="1.5" fill="var(--healthy)" opacity={isOnline ? 0.9 : 0.2} />
+                        <circle cx={rect.x + rect.width - 7} cy={rect.y + 8.5} r="1.5" fill="var(--healthy)" opacity={isOnline ? 0.9 : 0.2} />
+                        <circle cx={rect.x + rect.width - 7} cy={rect.y + 18.5} r="1.5" fill="var(--healthy)" opacity={isOnline ? 0.9 : 0.2} />
+                        <circle cx={rect.x + rect.width - 7} cy={rect.y + 28.5} r="1.5" fill="var(--healthy)" opacity={isOnline ? 0.9 : 0.2} />
                       </>
                     )}
                     
                     {/* Floating Label */}
-                    <text className="route-svg-node-name" x={rect.x + 18} y={rect.y - 16}>{trimNodeLabel(label)}</text>
+                    <text className="route-svg-node-name" x={rect.x + rect.width / 2} y={rect.y - 12}>{trimNodeLabel(label)}</text>
                     
                     {/* Status Badge */}
                     {isUuid && (
-                      <g transform={`translate(${rect.x + 34}, ${rect.y + 40})`} className="route-svg-node-status-group">
+                      <g transform={`translate(${rect.x + rect.width - 4}, ${rect.y + rect.height - 4})`} className="route-svg-node-status-group">
                         <circle className={`route-svg-node-status ${isOnline ? 'online' : 'offline'}`} cx="0" cy="0" r="8" />
                         {isOnline ? (
                           <path d="M-3,0.5 L-1,2.5 L3,-1.5" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
