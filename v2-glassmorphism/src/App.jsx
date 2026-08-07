@@ -296,21 +296,21 @@ const App = () => {
         <aside className="stats-sidebar" style={{ width: '280px', display: 'flex', flexDirection: 'column', gap: '24px', overflowY: 'auto', paddingRight: '8px' }}>
           <header style={{ padding: '8px 0' }}>
             <div style={{ fontSize: '18px', fontWeight: 'bold', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              AETHERMONITOR
+              以太监控
             </div>
-            <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>/ Netview</div>
+            <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>/ 网络视界</div>
           </header>
 
         <div className="glass-panel" style={{ padding: '20px' }}>
-          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '16px', letterSpacing: '0.1em' }}>SERVERS ({nodes.filter(n => n.status === 'online').length} ACTIVE)</div>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '16px', letterSpacing: '0.1em' }}>服务器节点 ({nodes.filter(n => n.status === 'online').length} 在线)</div>
           <div style={{ padding: '12px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', border: '1px solid var(--border-light)' }}>
-            <Activity size={16} /> Network
+            <Activity size={16} /> 网络概览
           </div>
         </div>
 
         <div className="glass-panel" style={{ padding: '20px' }}>
           <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '20px', letterSpacing: '0.1em', display: 'flex', justifyContent: 'space-between' }}>
-            SYSTEM OVERVIEW <span>•••</span>
+            系统总览 <span>•••</span>
           </div>
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -349,15 +349,15 @@ const App = () => {
 
         <div className="glass-panel" style={{ padding: '20px', flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '16px', letterSpacing: '0.1em', display: 'flex', justifyContent: 'space-between' }}>
-            LIVE ALERTS <span>•••</span>
+            实时告警 <span>•••</span>
           </div>
           
           <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
             <span style={{ padding: '4px 8px', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--critical)', borderRadius: '12px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{width: 6, height: 6, borderRadius: '50%', background: 'var(--critical)'}}></span> {routes.incidents.filter(i => i.state === 'critical').length} Critical
+              <span style={{width: 6, height: 6, borderRadius: '50%', background: 'var(--critical)'}}></span> {routes.incidents.filter(i => i.state === 'critical').length} 严重
             </span>
             <span style={{ padding: '4px 8px', background: 'rgba(245, 158, 11, 0.1)', color: 'var(--warning)', borderRadius: '12px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{width: 6, height: 6, borderRadius: '50%', background: 'var(--warning)'}}></span> {routes.incidents.filter(i => i.state === 'warning').length} Warning
+              <span style={{width: 6, height: 6, borderRadius: '50%', background: 'var(--warning)'}}></span> {routes.incidents.filter(i => i.state === 'warning').length} 警告
             </span>
           </div>
           
@@ -368,12 +368,12 @@ const App = () => {
                   {incident.state === 'critical' ? <X size={14}/> : <Activity size={14}/>}
                 </div>
                 <div style={{ fontSize: '12px' }}>
-                  <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Node: {incident.from}</div>
-                  <div style={{ color: 'var(--text-muted)', marginTop: '4px' }}>Latency Spike: {incident.latency?.ping}ms</div>
+                  <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>节点: {incident.from}</div>
+                  <div style={{ color: 'var(--text-muted)', marginTop: '4px' }}>延迟突增: {incident.latency?.ping}ms</div>
                 </div>
               </div>
             ))}
-            {routes.incidents.length === 0 && <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No active alerts.</div>}
+            {routes.incidents.length === 0 && <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>暂无告警。</div>}
           </div>
         </div>
       </aside>
@@ -384,12 +384,12 @@ const App = () => {
         <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0' }}>
           <div style={{ position: 'relative', width: '320px' }}>
             <Search size={16} style={{ position: 'absolute', left: 16, top: 10, color: 'var(--text-muted)' }} />
-            <input type="text" placeholder="Search" style={{ width: '100%', background: 'rgba(20,22,35,0.75)', border: '1px solid var(--border-light)', borderRadius: '20px', padding: '8px 16px 8px 40px', color: '#fff', fontSize: '14px', outline: 'none' }} />
+            <input type="text" placeholder="搜索节点..." style={{ width: '100%', background: 'rgba(20,22,35,0.75)', border: '1px solid var(--border-light)', borderRadius: '20px', padding: '8px 16px 8px 40px', color: '#fff', fontSize: '14px', outline: 'none' }} />
           </div>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.05)', padding: '6px 12px', borderRadius: '20px', border: '1px solid var(--border-light)' }}>
-              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Opacity</span>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>透明度</span>
               <input 
                 type="range" min="0" max="100" value={glassLevel}
                 onChange={(e) => setGlassLevel(Number(e.target.value))}
@@ -405,7 +405,7 @@ const App = () => {
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--accent-purple)', display: 'grid', placeItems: 'center', fontWeight: 'bold', fontSize: '14px', color: '#fff' }}>AD</div>
               <div style={{ fontSize: '13px' }}>
-                <div style={{ fontWeight: 600 }}>Admin</div>
+                <div style={{ fontWeight: 600 }}>管理员</div>
               </div>
             </div>
           </div>
@@ -416,39 +416,39 @@ const App = () => {
             <section className="glass-panel topology-area" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
               <div className="topology-header" style={{ padding: '24px 32px 0 32px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
-                  <h2 style={{ fontSize: '20px', letterSpacing: '0.02em', fontWeight: 600 }}>NETWORK TOPOLOGY MAP</h2>
-                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '6px' }}>Live Network: Global Infrastructure Map</div>
+                  <h2 style={{ fontSize: '20px', letterSpacing: '0.02em', fontWeight: 600 }}>网络拓扑星图</h2>
+                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '6px' }}>实时网络：全球基础设施地图</div>
                 </div>
                 
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '16px' }}>
                   <div style={{ display: 'flex', gap: '16px', fontSize: '12px', background: 'rgba(255,255,255,0.03)', padding: '6px 16px', borderRadius: '16px', border: '1px solid var(--border)' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>Region: <span style={{ color: 'var(--accent-cyan)' }}>Global</span></span>
-                    <span style={{ color: 'var(--text-secondary)' }}>Avg Latency: <span style={{ color: '#fff' }}>{data.agents ? '42ms' : '-'}</span></span>
-                    <span style={{ color: 'var(--text-secondary)' }}>Throughput: <span style={{ color: '#fff' }}>{totalRx}</span></span>
+                    <span style={{ color: 'var(--text-secondary)' }}>区域: <span style={{ color: 'var(--accent-cyan)' }}>全球</span></span>
+                    <span style={{ color: 'var(--text-secondary)' }}>平均延迟: <span style={{ color: '#fff' }}>{data.agents ? '42ms' : '-'}</span></span>
+                    <span style={{ color: 'var(--text-secondary)' }}>总吞吐量: <span style={{ color: '#fff' }}>{totalRx}</span></span>
                   </div>
                   
                   <div style={{ display: 'flex', gap: '16px', fontSize: '12px' }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--healthy)', boxShadow: '0 0 8px var(--healthy)' }}></span> Healthy Green</span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--warning)', boxShadow: '0 0 8px var(--warning)' }}></span> Warning Orange</span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--critical)', boxShadow: '0 0 8px var(--critical)' }}></span> Critical Red</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--healthy)', boxShadow: '0 0 8px var(--healthy)' }}></span> 健康 (绿)</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--warning)', boxShadow: '0 0 8px var(--warning)' }}></span> 警告 (橙)</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--critical)', boxShadow: '0 0 8px var(--critical)' }}></span> 严重 (红)</span>
                   </div>
                 </div>
               </div>
               
               <div style={{ flex: 1, position: 'relative', minHeight: '400px', display: 'flex' }}>
-                 <SegmentTopology data={data} onNodeDetail={() => {}} />
+                 <SegmentTopology data={data} onNodeDetail={() => {}} config={config} />
               </div>
             </section>
             
             <aside className="right-sidebar custom-scrollbar" style={{ width: '320px', display: 'flex', flexDirection: 'column', gap: '24px', overflowY: 'auto', paddingRight: '8px' }}>
               <div className="glass-panel" style={{ padding: '20px' }}>
                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '16px', letterSpacing: '0.1em', display: 'flex', justifyContent: 'space-between' }}>
-                   TRAFFIC SUMMARY <span>•••</span>
+                   流量统计 <span>•••</span>
                  </div>
                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                    <div>
-                     <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '8px' }}>Ingress: <span style={{ color: '#fff', fontWeight: 600 }}>{totalRx}</span></div>
-                     <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Egress: <span style={{ color: '#fff', fontWeight: 600 }}>{totalTx}</span></div>
+                     <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '8px' }}>入站: <span style={{ color: '#fff', fontWeight: 600 }}>{totalRx}</span></div>
+                     <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>出站: <span style={{ color: '#fff', fontWeight: 600 }}>{totalTx}</span></div>
                    </div>
                    <div style={{ width: '120px', height: '40px' }}>
                       <ResponsiveContainer width="100%" height="100%">
@@ -462,7 +462,7 @@ const App = () => {
               
               <div className="glass-panel" style={{ padding: '20px' }}>
                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '20px', letterSpacing: '0.1em', display: 'flex', justifyContent: 'space-between' }}>
-                   SERVER HEALTH <span>•••</span>
+                   节点健康度 <span>•••</span>
                  </div>
                  <div style={{ display: 'flex', gap: '2px', height: '6px', borderRadius: '3px', overflow: 'hidden', marginBottom: '16px' }}>
                    <div style={{ flex: nodes.filter(n => n.status === 'online').length, background: 'var(--healthy)' }}></div>
@@ -470,9 +470,9 @@ const App = () => {
                    <div style={{ flex: nodes.filter(n => n.status === 'offline').length, background: 'var(--critical)' }}></div>
                  </div>
                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 500 }}>
-                   <span style={{ color: 'var(--healthy)' }}>Online: {nodes.filter(n => n.status === 'online').length}</span>
-                   <span style={{ color: 'var(--warning)' }}>Warning: {routes.incidents.filter(i => i.state === 'warning').length}</span>
-                   <span style={{ color: 'var(--critical)' }}>Offline: {nodes.filter(n => n.status === 'offline').length}</span>
+                   <span style={{ color: 'var(--healthy)' }}>在线: {nodes.filter(n => n.status === 'online').length}</span>
+                   <span style={{ color: 'var(--warning)' }}>警告: {routes.incidents.filter(i => i.state === 'warning').length}</span>
+                   <span style={{ color: 'var(--critical)' }}>离线: {nodes.filter(n => n.status === 'offline').length}</span>
                  </div>
               </div>
 
