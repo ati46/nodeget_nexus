@@ -43,8 +43,9 @@ const isRealUuid = (nodeId) => (
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(nodeId)
 );
 
-const getNodeLabel = (nodeId, stats) => {
+const getNodeLabel = (nodeId, stats, config) => {
   if (stats && stats.name) return stats.name;
+  if (config?.node_metadata?.[nodeId]?.name) return config.node_metadata[nodeId].name;
   if (VIRTUAL_NODE_LABELS[nodeId]) return VIRTUAL_NODE_LABELS[nodeId];
   return nodeId;
 };
@@ -94,7 +95,7 @@ const RAW_GEO_REGIONS = [
 
 // GEO_REGIONS moved inside component to support dynamic config override
 
-const SegmentTopology = ({ data, onNodeDetail, config }) => {
+const SegmentTopology = ({ data, onNodeDetail, config, hoveredNodeId, hoveredAlertEdge }) => {
   const GEO_REGIONS = useMemo(() => {
     const customRegions = Array.isArray(config?.geo_regions) 
       ? config.geo_regions.map(r => {
@@ -191,8 +192,8 @@ const SegmentTopology = ({ data, onNodeDetail, config }) => {
     const regionNamesMap = new Map();
     if (data.agents) {
       Object.keys(data.agents).forEach(nodeId => {
-        const name = data.agents[nodeId].name || nodeId;
-        const flag = data.agents[nodeId].flag || '';
+        const name = data.agents[nodeId].name || config?.node_metadata?.[nodeId]?.name || nodeId;
+        const flag = data.agents[nodeId].flag || config?.node_metadata?.[nodeId]?.flag || '';
         let matchedRegion = null;
         for (const region of GEO_REGIONS) {
           if (region.regex.test(name) || region.regex.test(nodeId) || region.regex.test(flag)) {
@@ -344,7 +345,7 @@ const SegmentTopology = ({ data, onNodeDetail, config }) => {
       key,
       x: Math.min(event.clientX - shell.left + 14, shell.width - 220),
       y: event.clientY - shell.top + 14,
-      route: `${getNodeLabel(edge.from, data.agents[edge.from])} → ${getNodeLabel(edge.to, data.agents[edge.to])}`,
+      route: `${getNodeLabel(edge.from, data.agents[edge.from], config)} → ${getNodeLabel(edge.to, data.agents[edge.to], config)}`,
       latency,
       state,
       showTooltip: denseIssueMode || state === 'healthy' || state === 'unknown'
@@ -360,13 +361,8 @@ const SegmentTopology = ({ data, onNodeDetail, config }) => {
   return (
     <div className="route-matrix-shell">
       <div 
-        className="route-matrix-scroll custom-scrollbar" 
-        style={{ 
-          position: 'relative', 
-          width: '100%', 
-          height: '100%',
-          overflow: 'hidden' 
-        }}
+        className="route-matrix-scroll custom-scrollbar"
+        style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}
       >
         
         {/* Vector Background Map */}
@@ -468,6 +464,18 @@ const SegmentTopology = ({ data, onNodeDetail, config }) => {
               const isFocusDimmed = activeNodeId && !activeEdgeKeys.has(key);
               const isHoverDimmed = spotlightEdgeKey && spotlightEdgeKey !== key;
               const isSpotlight = spotlightEdgeKey === key;
+              
+              // Map List Hover Logic
+              const isListHoverDimmed = hoveredNodeId && (edge.from !== hoveredNodeId && edge.to !== hoveredNodeId);
+              const isListHoverSpotlight = hoveredNodeId && (edge.from === hoveredNodeId || edge.to === hoveredNodeId);
+              
+              // Alert List Hover Logic
+              const isAlertHoverDimmed = hoveredAlertEdge && hoveredAlertEdge.key !== key;
+              const isAlertHoverSpotlight = hoveredAlertEdge && hoveredAlertEdge.key === key;
+              
+              const isDimmed = isFocusDimmed || isHoverDimmed || isListHoverDimmed || isAlertHoverDimmed;
+              const isHighlighted = isSpotlight || isListHoverSpotlight || isAlertHoverSpotlight;
+              
               const isRightToLeft = from.x > to.x;
               const x1 = isRightToLeft ? from.x : from.x + from.width;
               const y1 = from.y + (from.height / 2);
@@ -482,7 +490,7 @@ const SegmentTopology = ({ data, onNodeDetail, config }) => {
               const path = getLinePath(x1, y1, x2, y2);
 
               return (
-                <g key={`${key}-${edgeIndex}`} className={`route-edge route-edge-${state} ${isFocusDimmed ? 'is-focus-dimmed' : ''} ${isHoverDimmed ? 'is-hover-dimmed' : ''} ${isSpotlight ? 'is-spotlight' : ''}`}>
+                <g key={`${key}-${edgeIndex}`} className={`route-edge route-edge-${state} ${isDimmed && !isListHoverDimmed && !isAlertHoverDimmed ? 'is-focus-dimmed' : ''} ${isHoverDimmed ? 'is-hover-dimmed' : ''} ${isSpotlight ? 'is-spotlight' : ''}`} style={{ opacity: isDimmed ? 0.1 : (isHighlighted ? 1 : undefined), transition: 'opacity 0.2s ease', strokeWidth: isAlertHoverSpotlight ? '2px' : undefined, filter: isAlertHoverSpotlight ? 'drop-shadow(0 0 6px var(--critical))' : undefined }}>
                   <path className="route-edge-path" d={path} markerEnd={`url(#arrow-${state})`} />
                   <path className="route-edge-flow" d={path} />
                   <path
@@ -494,7 +502,7 @@ const SegmentTopology = ({ data, onNodeDetail, config }) => {
                     onBlur={() => setHoveredEdge(null)}
                     tabIndex="0"
                     role="button"
-                    aria-label={`${getNodeLabel(edge.from, data.agents[edge.from])} 到 ${getNodeLabel(edge.to, data.agents[edge.to])}，${label || '无延迟数据'}`}
+                    aria-label={`${getNodeLabel(edge.from, data.agents[edge.from], config)} 到 ${getNodeLabel(edge.to, data.agents[edge.to], config)}，${label || '无延迟数据'}`}
                   />
                   {showPersistentLabel && (
                     <g className="route-edge-label" transform={`translate(${labelX} ${labelY})`}>
@@ -522,7 +530,7 @@ const SegmentTopology = ({ data, onNodeDetail, config }) => {
                   className={`route-node-worst-badge ${worst.state} ${pinnedEdgeKey === worst.key ? 'is-pinned' : ''}`}
                   role="button"
                   tabIndex="0"
-                  aria-label={`${getNodeLabel(nodeId, data.agents[nodeId])} 最差下游 ${text}`}
+                  aria-label={`${getNodeLabel(nodeId, data.agents[nodeId], config)} 最差下游 ${text}`}
                   aria-pressed={pinnedEdgeKey === worst.key}
                   onMouseMove={(event) => showEdgeTooltip(event, worst.edge, worst.key, worst.latency, worst.state)}
                   onMouseLeave={() => setHoveredEdge(null)}
@@ -552,6 +560,17 @@ const SegmentTopology = ({ data, onNodeDetail, config }) => {
                 const isActive = activeNodeId === nodeId;
                 const isEdgeEndpoint = spotlightEdge && (spotlightEdge.from === nodeId || spotlightEdge.to === nodeId);
                 const isInactive = activeNodeId && activeNodeId !== nodeId && !activeEdges.some((edge) => edge.from === nodeId || edge.to === nodeId);
+                
+                // Map List Hover Logic
+                const isListHoverDimmed = hoveredNodeId && hoveredNodeId !== nodeId && !visibleEdges.some(e => (e.from === hoveredNodeId && e.to === nodeId) || (e.to === hoveredNodeId && e.from === nodeId));
+                const isListHoverSpotlight = hoveredNodeId === nodeId;
+                
+                // Alert List Hover Logic
+                const isAlertHoverDimmed = hoveredAlertEdge && !visibleEdges.some(e => hoveredAlertEdge.key === `${e.from}->${e.to}` && (e.from === nodeId || e.to === nodeId));
+                const isAlertHoverSpotlight = hoveredAlertEdge && visibleEdges.some(e => hoveredAlertEdge.key === `${e.from}->${e.to}` && (e.from === nodeId || e.to === nodeId));
+                
+                const isNodeDimmed = isListHoverDimmed || isAlertHoverDimmed;
+                const isNodeHighlighted = isListHoverSpotlight || isAlertHoverSpotlight;
                 const iconX = rect.x + 13;
                 const iconY = rect.y + ((rect.height - 15) / 2);
                 const textX = rect.x + (rect.width / 2) + 8;
@@ -563,6 +582,7 @@ const SegmentTopology = ({ data, onNodeDetail, config }) => {
                   <g
                     key={`matrix-node-${nodeId}`}
                     className={`route-svg-node route-layer-${theme} ${isActive ? 'is-active' : ''} ${isInactive ? 'is-inactive' : ''} ${isEdgeEndpoint ? 'is-edge-endpoint' : ''} ${isVirtual ? 'is-virtual' : ''}`}
+                    style={{ opacity: isNodeDimmed ? 0.2 : 1, filter: isNodeHighlighted ? (isAlertHoverSpotlight ? 'drop-shadow(0 0 12px var(--critical))' : 'drop-shadow(0 0 12px var(--accent-cyan))') : 'none', transform: isNodeHighlighted ? 'scale(1.1)' : 'scale(1)', transformOrigin: `${rect.x + rect.width / 2}px ${rect.y + rect.height / 2}px`, transition: 'all 0.2s ease' }}
                     role="button"
                     tabIndex="0"
                     aria-label={label}
@@ -665,7 +685,7 @@ const SegmentTopology = ({ data, onNodeDetail, config }) => {
                     aria-pressed={pinnedEdgeKey === key}
                   >
                     <i aria-hidden="true" />
-                    <span>{getNodeLabel(edge.from, data.agents[edge.from])} → {getNodeLabel(edge.to, data.agents[edge.to])}</span>
+                    <span>{getNodeLabel(edge.from, data.agents[edge.from], config)} → {getNodeLabel(edge.to, data.agents[edge.to], config)}</span>
                     <strong>{getLatencyLabel(latency)}</strong>
                   </button>
                 );
@@ -722,7 +742,7 @@ const SegmentTopology = ({ data, onNodeDetail, config }) => {
                   aria-pressed={pinnedEdgeKey === key}
                 >
                   <i aria-hidden="true" />
-                  <span>{getNodeLabel(edge.from, data.agents[edge.from])} → {getNodeLabel(edge.to, data.agents[edge.to])}</span>
+                  <span>{getNodeLabel(edge.from, data.agents[edge.from], config)} → {getNodeLabel(edge.to, data.agents[edge.to], config)}</span>
                   <strong>{label || '无拨测'}</strong>
                 </button>
               );

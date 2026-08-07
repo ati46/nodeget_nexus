@@ -453,11 +453,10 @@ button, input { font: inherit; color: inherit; }
 .node-drawer {
   width: min(100vw, 480px);
   height: 100%;
-  background: rgba(12, 14, 25, 0.8);
+  background: #080A12;
   border-left: 1px solid var(--border-light);
   box-shadow: -20px 0 80px rgba(0,0,0,0.8);
   display: flex; flex-direction: column;
-  padding: 32px;
   animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 @keyframes slideInRight {
@@ -764,9 +763,7 @@ button, input { font: inherit; color: inherit; }
   height: 100%;
   overflow-y: auto;
   border-left: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(12, 14, 25, var(--glass-opacity-drawer, 0.05));
-  backdrop-filter: blur(var(--glass-blur-drawer, 4px));
-  -webkit-backdrop-filter: blur(var(--glass-blur-drawer, 4px));
+  background: #080A12;
   box-shadow: -24px 0 64px rgba(0, 0, 0, 0.7);
 }
 
@@ -779,9 +776,13 @@ button, input { font: inherit; color: inherit; }
   gap: 24px;
   padding: 24px 28px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(12, 14, 25, var(--glass-opacity-drawer, 0.05));
-  backdrop-filter: blur(var(--glass-blur-drawer, 4px));
-  -webkit-backdrop-filter: blur(var(--glass-blur-drawer, 4px));
+  background: #080A12;
+}
+
+.drawer-body {
+  padding: 24px 28px 32px 28px;
+  display: flex;
+  flex-direction: column;
 }
 
 .drawer-header h2 {

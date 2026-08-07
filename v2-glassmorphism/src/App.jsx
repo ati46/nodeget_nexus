@@ -3,6 +3,7 @@ import { Activity, AlertTriangle, ArrowRight, LayoutDashboard, Server, Settings,
 import { RadialBarChart, RadialBar, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import SegmentTopology from './components/SegmentTopology';
 import NodeCard from './components/NodeCard';
+import NodeDetailModal from './components/NodeDetailModal';
 import { fetch24hTaskHistory, fetchAgentMetadata, fetchAllAgentUuids, fetchDynamicData, fetchFrontendConfig, fetchStaticData, fetchTaskLatencies, initApi } from './apiClient';
 import { transformData, formatBytes } from './dataTransformer';
 import { buildDemoDashboard } from './demoData';
@@ -96,6 +97,8 @@ const App = () => {
   const [selectedNode, setSelectedNode] = useState(null);
   const [activeTab, setActiveTab] = useState('Dashboard');
   const [glassLevel, setGlassLevel] = useState(() => parseInt(getCookie('glassLevel') || '10', 10));
+  const [hoveredNodeId, setHoveredNodeId] = useState(null);
+  const [hoveredAlertEdge, setHoveredAlertEdge] = useState(null);
   const snapshotRef = React.useRef(null);
   const latencyRef = React.useRef({});
 
@@ -217,21 +220,31 @@ const App = () => {
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [config, demoMode]);
 
-  const nodes = useMemo(() => data ? Object.values(data.agents).sort((a, b) => a.status !== b.status ? (a.status === 'offline' ? -1 : 1) : b.cpu - a.cpu) : [], [data]);
+  const nodes = useMemo(() => {
+    if (!data) return [];
+    return Object.values(data.agents).sort((a, b) => {
+      if (a.status !== b.status) return a.status === 'online' ? -1 : 1;
+      const nameA = getNodeName(a.id, data, config) || a.id;
+      const nameB = getNodeName(b.id, data, config) || b.id;
+      return nameA.localeCompare(nameB);
+    });
+  }, [data, config]);
   
-  const { maxCpu, maxCpuNode, maxRam, maxRamNode, totalRx, totalTx } = useMemo(() => {
-    if (!nodes.length) return { maxCpu: 0, maxCpuNode: '-', maxRam: 0, maxRamNode: '-', totalRx: 0, totalTx: 0 };
-    let cpuMax = 0, ramMax = 0, rx = 0, tx = 0, count = 0;
+  const { maxCpu, maxCpuNode, maxRam, maxRamNode, totalRx, totalTx, totalRxVolume, totalTxVolume } = useMemo(() => {
+    if (!nodes.length) return { maxCpu: 0, maxCpuNode: '-', maxRam: 0, maxRamNode: '-', totalRx: 0, totalTx: 0, totalRxVolume: 0, totalTxVolume: 0 };
+    let cpuMax = 0, ramMax = 0, rx = 0, tx = 0, rxVol = 0, txVol = 0, count = 0;
     let cpuNodeName = '-', ramNodeName = '-';
     nodes.forEach(n => {
       if (n.status === 'online') {
-        if (n.cpu >= cpuMax) { cpuMax = n.cpu; cpuNodeName = n.name || n.id; }
+        if (n.cpu >= cpuMax) { cpuMax = n.cpu; cpuNodeName = n.id; }
         if (n.ram_total) {
           const rPct = (n.ram_used / n.ram_total) * 100;
-          if (rPct >= ramMax) { ramMax = rPct; ramNodeName = n.name || n.id; }
+          if (rPct >= ramMax) { ramMax = rPct; ramNodeName = n.id; }
         }
         rx += n.net_rx_speed || 0;
         tx += n.net_tx_speed || 0;
+        rxVol += n.net_rx_total || 0;
+        txVol += n.net_tx_total || 0;
         count++;
       }
     });
@@ -241,7 +254,9 @@ const App = () => {
       maxRam: count ? Math.round(ramMax) : 0,
       maxRamNode: ramNodeName,
       totalRx: formatBytes(rx) + '/s',
-      totalTx: formatBytes(tx) + '/s'
+      totalTx: formatBytes(tx) + '/s',
+      totalRxVolume: formatBytes(rxVol),
+      totalTxVolume: formatBytes(txVol)
     };
   }, [nodes]);
 
@@ -302,78 +317,95 @@ const App = () => {
           </header>
 
         <div className="glass-panel" style={{ padding: '20px' }}>
-          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '16px', letterSpacing: '0.1em' }}>服务器节点 ({nodes.filter(n => n.status === 'online').length} 在线)</div>
-          <div style={{ padding: '12px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', border: '1px solid var(--border-light)' }}>
-            <Activity size={16} /> 网络概览
-          </div>
-        </div>
-
-        <div className="glass-panel" style={{ padding: '20px' }}>
-          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '20px', letterSpacing: '0.1em', display: 'flex', justifyContent: 'space-between' }}>
-            系统总览 <span>•••</span>
-          </div>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }}><Activity size={14}/> CPU</span>
-                <span style={{ fontWeight: 'bold' }}>{maxCpu}%</span>
-              </div>
-              <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
-                <div style={{ width: `${maxCpu}%`, height: '100%', background: maxCpu > 80 ? 'var(--critical)' : 'var(--accent-purple)' }} />
-              </div>
-            </div>
-
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }}><Monitor size={14}/> MEM</span>
-                <span style={{ fontWeight: 'bold' }}>{maxRam}%</span>
-              </div>
-              <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
-                <div style={{ width: `${maxRam}%`, height: '100%', background: maxRam > 90 ? 'var(--critical)' : 'var(--accent-cyan)' }} />
-              </div>
-            </div>
-            
-            <div style={{ marginTop: '8px', height: '40px', width: '100%' }}>
-               <ResponsiveContainer width="100%" height="100%">
-                 <AreaChart data={[{v:30},{v:40},{v:35},{v:50},{v:45},{v:60}]}>
-                   <defs>
-                     <linearGradient id="colorV" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="var(--accent-cyan)" stopOpacity={0.3}/><stop offset="95%" stopColor="var(--accent-cyan)" stopOpacity={0}/></linearGradient>
-                   </defs>
-                   <Area type="monotone" dataKey="v" stroke="var(--accent-cyan)" strokeWidth={2} fillOpacity={1} fill="url(#colorV)" />
-                 </AreaChart>
-               </ResponsiveContainer>
-            </div>
-          </div>
-        </div>
-
-        <div className="glass-panel" style={{ padding: '20px', flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '16px', letterSpacing: '0.1em', display: 'flex', justifyContent: 'space-between' }}>
-            实时告警 <span>•••</span>
+            系统总览 <span>...</span>
           </div>
           
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-            <span style={{ padding: '4px 8px', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--critical)', borderRadius: '12px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{width: 6, height: 6, borderRadius: '50%', background: 'var(--critical)'}}></span> {routes.incidents.filter(i => i.state === 'critical').length} 严重
-            </span>
-            <span style={{ padding: '4px 8px', background: 'rgba(245, 158, 11, 0.1)', color: 'var(--warning)', borderRadius: '12px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{width: 6, height: 6, borderRadius: '50%', background: 'var(--warning)'}}></span> {routes.incidents.filter(i => i.state === 'warning').length} 警告
-            </span>
+          <div style={{ fontSize: '13px', color: hoveredNodeId ? '#fff' : 'var(--accent-cyan)', marginBottom: '20px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Activity size={14} /> {hoveredNodeId ? getNodeName(hoveredNodeId, data, config) : (maxCpuNode !== '-' ? `最高负载: ${getNodeName(maxCpuNode, data, config)}` : '全局最高负载')}
           </div>
           
-          <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', paddingRight: '8px' }}>
-            {routes.incidents.map((incident, i) => (
-              <div key={i} style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-                <div style={{ color: incident.state === 'critical' ? 'var(--critical)' : 'var(--warning)', marginTop: '2px' }}>
-                  {incident.state === 'critical' ? <X size={14}/> : <Activity size={14}/>}
-                </div>
-                <div style={{ fontSize: '12px' }}>
-                  <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>节点: {incident.from}</div>
-                  <div style={{ color: 'var(--text-muted)', marginTop: '4px' }}>延迟突增: {incident.latency?.ping}ms</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {(() => {
+               const targetData = hoveredNodeId ? data.agents?.[hoveredNodeId] : null;
+               const displayCpu = targetData ? (targetData.cpu || 0).toFixed(1) : maxCpu;
+               const displayRam = targetData ? (targetData.ram_total ? (targetData.ram_used / targetData.ram_total * 100) : 0).toFixed(1) : maxRam;
+               const displayRx = targetData ? formatBytes(targetData.net_rx_speed || 0) + '/s' : totalRx;
+               const displayTx = targetData ? formatBytes(targetData.net_tx_speed || 0) + '/s' : totalTx;
+               const displayRxVol = targetData ? formatBytes(targetData.net_rx_total || 0) : totalRxVolume;
+               const displayTxVol = targetData ? formatBytes(targetData.net_tx_total || 0) : totalTxVolume;
+               
+               return (
+                 <>
+                   <div>
+                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px' }}>
+                       <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }}><Activity size={14}/> CPU</span>
+                       <span style={{ fontWeight: 'bold' }}>{displayCpu}%</span>
+                     </div>
+                     <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
+                       <div style={{ width: `${displayCpu}%`, height: '100%', background: displayCpu > 80 ? 'var(--critical)' : 'var(--accent-purple)', transition: 'width 0.3s ease, background 0.3s ease' }} />
+                     </div>
+                   </div>
+
+                   <div>
+                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px' }}>
+                       <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }}><Monitor size={14}/> MEM</span>
+                       <span style={{ fontWeight: 'bold' }}>{displayRam}%</span>
+                     </div>
+                     <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
+                       <div style={{ width: `${displayRam}%`, height: '100%', background: displayRam > 90 ? 'var(--critical)' : 'var(--accent-cyan)', transition: 'width 0.3s ease, background 0.3s ease' }} />
+                     </div>
+                   </div>
+                   
+                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', marginTop: '4px' }}>
+                     <div style={{ flex: 1, background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px' }}><ArrowDown size={12} color="var(--accent-cyan)" /> 入站</div>
+                       <div style={{ fontSize: '13px', fontWeight: 600, color: '#fff' }}>{displayRx}</div>
+                       <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>总量: {displayRxVol}</div>
+                     </div>
+                     <div style={{ flex: 1, background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px' }}><ArrowUp size={12} color="var(--accent-purple)" /> 出站</div>
+                       <div style={{ fontSize: '13px', fontWeight: 600, color: '#fff' }}>{displayTx}</div>
+                       <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>总量: {displayTxVol}</div>
+                     </div>
+                   </div>
+                 </>
+               );
+            })()}
+          </div>
+        </div>
+
+        <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column', flex: 1, minHeight: '300px' }}>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '16px', letterSpacing: '0.1em' }}>
+            服务器节点 ({nodes.filter(n => n.status === 'online').length} 在线)
+          </div>
+          <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', paddingRight: '4px' }}>
+            {nodes.map(node => (
+              <div 
+                key={node.id}
+                onMouseEnter={() => setHoveredNodeId(node.id)}
+                onMouseLeave={() => setHoveredNodeId(null)}
+                onClick={() => setSelectedNode(node)}
+                style={{ 
+                  padding: '10px 12px', 
+                  background: hoveredNodeId === node.id ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)', 
+                  borderRadius: '8px', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '10px', 
+                  fontSize: '13px', 
+                  border: '1px solid',
+                  borderColor: hoveredNodeId === node.id ? 'var(--border-light)' : 'transparent',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: node.status === 'online' ? 'var(--healthy)' : 'var(--critical)', boxShadow: node.status === 'online' ? '0 0 8px var(--healthy)' : 'none' }}></div>
+                <div style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: hoveredNodeId === node.id ? '#fff' : 'var(--text-secondary)' }}>
+                  {getNodeName(node.id, data, config)}
                 </div>
               </div>
             ))}
-            {routes.incidents.length === 0 && <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>暂无告警。</div>}
           </div>
         </div>
       </aside>
@@ -382,9 +414,24 @@ const App = () => {
       {/* MAIN CONTENT */}
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '24px', overflowY: 'auto', gridColumn: activeTab === 'Dashboard' ? '3' : '2 / -1', paddingRight: '8px' }}>
         <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0' }}>
-          <div style={{ position: 'relative', width: '320px' }}>
-            <Search size={16} style={{ position: 'absolute', left: 16, top: 10, color: 'var(--text-muted)' }} />
-            <input type="text" placeholder="搜索节点..." style={{ width: '100%', background: 'rgba(20,22,35,0.75)', border: '1px solid var(--border-light)', borderRadius: '20px', padding: '8px 16px 8px 40px', color: '#fff', fontSize: '14px', outline: 'none' }} />
+          <div style={{ display: 'flex', gap: '24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', background: 'rgba(255,255,255,0.03)', padding: '6px 16px', borderRadius: '20px', border: '1px solid var(--border)' }}>
+               <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>速率↓</span>
+               <span style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>{totalRx}</span>
+               <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>速率↑</span>
+               <span style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>{totalTx}</span>
+               <div style={{ width: '1px', height: '12px', background: 'var(--border)' }}></div>
+               <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>总量↓</span>
+               <span style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>{totalRxVolume}</span>
+               <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>总量↑</span>
+               <span style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>{totalTxVolume}</span>
+            </div>
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', background: 'rgba(255,255,255,0.03)', padding: '6px 16px', borderRadius: '20px', border: '1px solid var(--border)' }}>
+               <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--healthy)' }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--healthy)' }}></span> {nodes.filter(n => n.status === 'online').length} 在线</span>
+               <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--warning)' }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--warning)' }}></span> {routes.incidents.filter(i => i.state === 'warning').length} 警告</span>
+               <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--critical)' }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--critical)' }}></span> {nodes.filter(n => n.status === 'offline').length} 离线</span>
+            </div>
           </div>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
@@ -436,43 +483,56 @@ const App = () => {
               </div>
               
               <div style={{ flex: 1, position: 'relative', minHeight: '400px', display: 'flex' }}>
-                 <SegmentTopology data={data} onNodeDetail={() => {}} config={config} />
+                 <SegmentTopology data={data} onNodeDetail={setSelectedNode} config={config} hoveredNodeId={hoveredNodeId} hoveredAlertEdge={hoveredAlertEdge} />
               </div>
             </section>
             
             <aside className="right-sidebar custom-scrollbar" style={{ width: '320px', display: 'flex', flexDirection: 'column', gap: '24px', overflowY: 'auto', paddingRight: '8px' }}>
-              <div className="glass-panel" style={{ padding: '20px' }}>
+              <div className="glass-panel" style={{ padding: '20px', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '16px', letterSpacing: '0.1em', display: 'flex', justifyContent: 'space-between' }}>
-                   流量统计 <span>•••</span>
+                   实时告警 ({routes.incidents.length}) <span>•••</span>
                  </div>
-                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                   <div>
-                     <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '8px' }}>入站: <span style={{ color: '#fff', fontWeight: 600 }}>{totalRx}</span></div>
-                     <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>出站: <span style={{ color: '#fff', fontWeight: 600 }}>{totalTx}</span></div>
-                   </div>
-                   <div style={{ width: '120px', height: '40px' }}>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={[{v:20},{v:40},{v:30},{v:50},{v:30},{v:60}]}>
-                          <Area type="monotone" dataKey="v" stroke="var(--accent-cyan)" strokeWidth={2} fill="transparent" />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                   </div>
-                 </div>
-              </div>
-              
-              <div className="glass-panel" style={{ padding: '20px' }}>
-                 <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '20px', letterSpacing: '0.1em', display: 'flex', justifyContent: 'space-between' }}>
-                   节点健康度 <span>•••</span>
-                 </div>
-                 <div style={{ display: 'flex', gap: '2px', height: '6px', borderRadius: '3px', overflow: 'hidden', marginBottom: '16px' }}>
-                   <div style={{ flex: nodes.filter(n => n.status === 'online').length, background: 'var(--healthy)' }}></div>
-                   <div style={{ flex: routes.incidents.filter(i => i.state === 'warning').length, background: 'var(--warning)' }}></div>
-                   <div style={{ flex: nodes.filter(n => n.status === 'offline').length, background: 'var(--critical)' }}></div>
-                 </div>
-                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 500 }}>
-                   <span style={{ color: 'var(--healthy)' }}>在线: {nodes.filter(n => n.status === 'online').length}</span>
-                   <span style={{ color: 'var(--warning)' }}>警告: {routes.incidents.filter(i => i.state === 'warning').length}</span>
-                   <span style={{ color: 'var(--critical)' }}>离线: {nodes.filter(n => n.status === 'offline').length}</span>
+                 <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px', paddingRight: '4px' }}>
+                    {routes.incidents.map((incident, i) => {
+                      const fromName = getNodeName(incident.from, data, config);
+                      const toName = incident.to ? getNodeName(incident.to, data, config) : '未知目标';
+                      const isCritical = incident.state === 'critical';
+                      
+                      return (
+                        <div 
+                          key={i} 
+                          onMouseEnter={() => setHoveredAlertEdge({ key: `${incident.from}->${incident.to}` })}
+                          onMouseLeave={() => setHoveredAlertEdge(null)}
+                          onClick={() => setSelectedNode(data.agents?.[incident.from] || { id: incident.from })}
+                          style={{ 
+                            background: isCritical ? 'rgba(239, 68, 68, 0.08)' : 'rgba(245, 158, 11, 0.08)',
+                            borderLeft: `2px solid ${isCritical ? 'var(--critical)' : 'var(--warning)'}`,
+                            padding: '12px',
+                            borderRadius: '0 8px 8px 0',
+                            display: 'flex', 
+                            gap: '12px', 
+                            alignItems: 'center',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease',
+                            boxShadow: isCritical ? 'inset 0 0 12px rgba(239, 68, 68, 0.02)' : 'none'
+                          }}
+                        >
+                          <div style={{ color: isCritical ? 'var(--critical)' : 'var(--warning)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {isCritical ? <X size={16}/> : <Activity size={16}/>}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {fromName} ➔ {toName}
+                            </div>
+                            <div style={{ fontSize: '12px', color: isCritical ? 'rgba(239, 68, 68, 0.8)' : 'rgba(245, 158, 11, 0.8)', marginTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
+                              <span>延迟突增</span>
+                              <span style={{ fontWeight: 600 }}>{incident.latency?.ping}ms</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {routes.incidents.length === 0 && <div style={{ fontSize: '13px', color: 'var(--text-muted)', textAlign: 'center', padding: '40px 0' }}>✅ 所有节点健康运行，暂无告警。</div>}
                  </div>
               </div>
 
@@ -486,7 +546,7 @@ const App = () => {
             <h2 style={{ fontSize: '20px', letterSpacing: '0.02em', fontWeight: 600, marginBottom: '24px' }}>SERVERS ({nodes.length})</h2>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: '24px' }}>
               {nodes.map(node => (
-                <NodeCard key={node.id} stats={node} onClick={() => setSelectedNode(node.id)} />
+                <NodeCard key={node.id} stats={node} onClick={() => setSelectedNode(node)} />
               ))}
             </div>
           </section>
@@ -503,6 +563,13 @@ const App = () => {
           </section>
         )}
       </main>
+
+      {selectedNode && (
+        <NodeDetailModal 
+          agent={selectedNode} 
+          onClose={() => setSelectedNode(null)} 
+        />
+      )}
     </div>
   );
 }

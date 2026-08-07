@@ -99,11 +99,24 @@ const aggregateHistory = (historyData, timeWindowHours = 24) => {
 
 const COLORS = [
   'var(--accent-cyan)',
-  'var(--accent-emerald)',
-  'var(--accent-amber)',
-  'var(--accent-rose)',
-  '#a855f7' // purple
+  'var(--healthy)',
+  'var(--warning)',
+  'var(--critical)',
+  'var(--accent-purple)'
 ];
+
+const getLatencyColor = (val) => {
+  if (!val || val === 'fail') return 'var(--critical)';
+  if (val > 200) return 'var(--critical)';
+  if (val > 100) return 'var(--warning)';
+  return 'var(--healthy)';
+};
+
+const getLossColor = (loss) => {
+  if (loss > 10) return 'var(--critical)';
+  if (loss > 0) return 'var(--warning)';
+  return 'var(--healthy)';
+};
 
 const GlobalLatencyPanel = ({ historyData, hideTitle, selectedSource, onClearSource }) => {
   const [timeWindow, setTimeWindow] = useState(1); // Default to 1 hour
@@ -164,7 +177,7 @@ const GlobalLatencyPanel = ({ historyData, hideTitle, selectedSource, onClearSou
                   key={`bar_${src}`}
                   dataKey={`${src}_loss`}
                   name={`${src} 丢包`}
-                  fill="var(--accent-rose)"
+                  fill="var(--critical)"
                   fillOpacity={isFocused ? 0.8 : 0.08}
                   barSize={2}
                 />
@@ -185,14 +198,14 @@ const GlobalLatencyPanel = ({ historyData, hideTitle, selectedSource, onClearSou
             const s = stats[src];
             const isSelected = hasSelectedSource && selectedSource === src;
             return (
-              <div className={`latency-stat-row ${isSelected ? 'is-selected' : hasSelectedSource ? 'is-dimmed' : ''}`} key={src} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: '1rem', alignItems: 'center', padding: '0.5rem', color: 'var(--text-primary)', fontSize: '0.9rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div className={`latency-stat-row ${isSelected ? 'is-selected' : hasSelectedSource ? 'is-dimmed' : ''}`} key={src} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: '1rem', alignItems: 'center', padding: '0.5rem', color: 'var(--text-primary)', fontSize: '0.9rem', fontWeight: 500 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'normal' }}>
                   <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: COLORS[sources.indexOf(src) % COLORS.length] }}></div>
                   {src}
                 </div>
-                <div style={{ color: 'var(--accent-amber)' }}>{s.avg} ms</div>
-                <div>{s.max} ms</div>
-                <div style={{ color: s.lossRate > 5 ? 'var(--accent-rose)' : 'var(--text-secondary)' }}>
+                <div style={{ color: getLatencyColor(s.avg) }}>{s.avg} ms</div>
+                <div style={{ color: getLatencyColor(s.max) }}>{s.max} ms</div>
+                <div style={{ color: getLossColor(s.lossRate) }}>
                   {s.lossRate}%
                 </div>
               </div>

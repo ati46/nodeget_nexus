@@ -139,11 +139,11 @@ export const fetchAgentMetadata = async (uuids) => {
       });
       
       metadataMap[uuid] = {
-        name: (nameRes !== null && nameRes !== undefined) ? nameRes : uuid.substring(0, 8),
-        flag: (flagRes !== null && flagRes !== undefined) ? flagRes : '🌐'
+        name: (nameRes !== null && nameRes !== undefined) ? nameRes : null,
+        flag: (flagRes !== null && flagRes !== undefined) ? flagRes : null
       };
     } catch (e) {
-      metadataMap[uuid] = { name: uuid.substring(0, 8), flag: '🌐' };
+      metadataMap[uuid] = { name: null, flag: null };
     }
   });
 

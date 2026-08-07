@@ -62,7 +62,7 @@ export const transformData = (metadataMap, staticDataArr, dynamicDataArr, config
   if (dynamicDataArr) {
     dynamicDataArr.forEach(dyn => {
       const uuid = dyn.uuid;
-      const meta = metadataMap[uuid] || { name: uuid.substring(0, 8), flag: '🌐' };
+      const meta = metadataMap[uuid] || { name: null, flag: null };
       const stat = staticMap[uuid] || {};
       
       const isOnline = (now - dyn.timestamp) < 30000; // Consider offline if older than 30s
