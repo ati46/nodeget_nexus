@@ -202,10 +202,32 @@ const App = () => {
     if (demoMode || !config || !snapshotRef.current) return undefined;
     let cancelled = false;
     let running = false;
+    let tick = 0;
     const refresh = async () => {
       if (running) return;
       running = true;
       try {
+        tick++;
+        // Periodically discover newly added agents dynamically without refreshing page
+        if (tick % 5 === 0) {
+          const latestUuids = await fetchAllAgentUuids();
+          if (Array.isArray(latestUuids)) {
+            const currentSet = new Set(snapshotRef.current.uuidList || []);
+            const newUuids = latestUuids.filter((id) => !currentSet.has(id));
+            if (newUuids.length > 0) {
+              const [newMeta, newStatic] = await Promise.all([
+                fetchAgentMetadata(newUuids),
+                fetchStaticData(newUuids)
+              ]);
+              if (!cancelled) {
+                snapshotRef.current.uuidList = [...snapshotRef.current.uuidList, ...newUuids];
+                snapshotRef.current.metadata = { ...snapshotRef.current.metadata, ...newMeta };
+                snapshotRef.current.staticData = [...(snapshotRef.current.staticData || []), ...(newStatic || [])];
+              }
+            }
+          }
+        }
+
         const dynamicData = await fetchDynamicData(snapshotRef.current.uuidList);
         if (!cancelled) {
           setData(transformData(snapshotRef.current.metadata, snapshotRef.current.staticData, dynamicData, config, latencyRef.current));

@@ -166,11 +166,12 @@ const SegmentTopology = ({ data, onNodeDetail, config, hoveredNodeId, hoveredAle
       const nodes = Array.isArray(layer.nodes) ? layer.nodes : [];
       nodes.forEach((nodeId) => {
         explicitlyMappedNodes.add(nodeId);
-        const name = data.agents?.[nodeId]?.name || nodeId;
+        const name = data?.agents?.[nodeId]?.name || config?.node_metadata?.[nodeId]?.name || nodeId;
+        const flag = data?.agents?.[nodeId]?.flag || config?.node_metadata?.[nodeId]?.flag || '';
         let matchedRegion = null;
         
         for (const region of GEO_REGIONS) {
-          if (region.regex.test(name) || region.regex.test(nodeId)) {
+          if (region.regex.test(name) || region.regex.test(nodeId) || (flag && region.regex.test(flag))) {
             matchedRegion = region;
             break;
           }
