@@ -120,9 +120,19 @@ const App = () => {
     let cancelled = false;
     const initialize = async () => {
       try {
-        const response = await fetch('config.json', { cache: 'no-store' });
-        if (!response.ok) throw new Error(`配置加载失败（HTTP ${response.status}）`);
-        const raw = await response.json();
+        let raw = null;
+        try {
+          const res = await fetch('./config.json', { cache: 'no-store' });
+          if (res.ok) raw = await res.json();
+        } catch (e) { /* ignore */ }
+        if (!raw) {
+          try {
+            const res = await fetch('config.json', { cache: 'no-store' });
+            if (res.ok) raw = await res.json();
+          } catch (e) { /* ignore */ }
+        }
+        if (!raw) throw new Error('配置加载失败：未找到 config.json');
+
         const site = raw.site_tokens?.[0];
         const apiUrl = site?.backend_url || raw.api_url;
         const apiToken = site?.token || raw.api_token;
@@ -138,32 +148,41 @@ const App = () => {
 
         initApi(apiUrl || '/', apiToken || '');
         let active = { ...raw, edges: Array.isArray(raw.edges) ? raw.edges : [] };
-        const kvConfig = await fetchFrontendConfig();
-        if (kvConfig && typeof kvConfig === 'object') {
-          active = {
-            ...active,
-            ...kvConfig,
-            topology: kvConfig.topology || active.topology,
-            edges: Array.isArray(kvConfig.edges) ? kvConfig.edges : active.edges,
-            latency_tasks: { ...(active.latency_tasks || {}), ...(kvConfig.latency_tasks || {}) }
-          };
+        
+        try {
+          const kvConfig = await fetchFrontendConfig();
+          if (kvConfig && typeof kvConfig === 'object') {
+            active = {
+              ...active,
+              ...kvConfig,
+              topology: kvConfig.topology || active.topology,
+              edges: Array.isArray(kvConfig.edges) ? kvConfig.edges : active.edges,
+              latency_tasks: { ...(active.latency_tasks || {}), ...(kvConfig.latency_tasks || {}) }
+            };
+          }
+        } catch (e) {
+          console.warn('KV config load failed, using fallback config.json:', e);
         }
 
         active.latency_tasks = buildTasks(active);
         const edges = Array.isArray(active.edges) ? active.edges : [];
         const ids = new Set(edges.flatMap((edge) => [edge?.from, edge?.to]).filter((id) => id && UUID_RE.test(id)));
 
-        // Dynamic Agent Discovery
-        const allUuids = await fetchAllAgentUuids();
-        if (Array.isArray(allUuids)) {
-          allUuids.forEach((id) => ids.add(id));
+        // Dynamic Agent Discovery with safe fallback
+        try {
+          const allUuids = await fetchAllAgentUuids();
+          if (Array.isArray(allUuids)) {
+            allUuids.forEach((id) => ids.add(id));
+          }
+        } catch (e) {
+          console.warn('Dynamic agent discovery failed on init:', e);
         }
 
         const uuidList = Array.from(ids);
         const [metadata, staticData, dynamicData] = await Promise.all([
-          fetchAgentMetadata(uuidList),
-          fetchStaticData(uuidList),
-          fetchDynamicData(uuidList),
+          fetchAgentMetadata(uuidList).catch(() => ({})),
+          fetchStaticData(uuidList).catch(() => []),
+          fetchDynamicData(uuidList).catch(() => []),
         ]);
 
         if (cancelled) return;

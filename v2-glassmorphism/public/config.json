@@ -4,10 +4,6 @@
   "topology": {
     "layers": [
       {
-        "name": "接入层",
-        "nodes": ["入口"]
-      },
-      {
         "name": "中转层",
         "nodes": [
           "b768fa45-6d7a-4e6a-988b-d0f2091b8e85",
@@ -29,9 +25,6 @@
     ]
   },
   "edges": [
-    { "from": "入口", "to": "b768fa45-6d7a-4e6a-988b-d0f2091b8e85", "latencyTask": "tcping-上海联通" },
-    { "from": "入口", "to": "f62ea84f-ad12-40a6-a19f-7f6d1a262f94", "latencyTask": "tcping-上海联通" },
-    { "from": "入口", "to": "98f685f4-f82d-432b-8a65-0d51303d4f95", "latencyTask": "tcping-上海联通" },
     { "from": "b768fa45-6d7a-4e6a-988b-d0f2091b8e85", "to": "d6f1d6e5-1fdf-4fad-9796-444dde374e5e", "latencyTask": "tcping-wac" },
     { "from": "b768fa45-6d7a-4e6a-988b-d0f2091b8e85", "to": "05213dff-d13f-4c84-a642-95b9f0d9c082", "latencyTask": "tcping-bytevirt" },
     { "from": "f62ea84f-ad12-40a6-a19f-7f6d1a262f94", "to": "d6f1d6e5-1fdf-4fad-9796-444dde374e5e", "latencyTask": "tcping-wac" },

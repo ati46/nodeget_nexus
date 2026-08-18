@@ -21,10 +21,17 @@ class WSRPCClient {
     if (this.connectionPromise) return this.connectionPromise;
 
     this.connectionPromise = new Promise((resolve, reject) => {
+      const connTimer = setTimeout(() => {
+        if (!this.isConnected) {
+          reject(new Error("WebSocket connection timed out (5s). Check api_url."));
+        }
+      }, 5000);
+
       try {
         this.ws = new WebSocket(this.url);
 
         this.ws.onopen = () => {
+          clearTimeout(connTimer);
           this.isConnected = true;
           resolve();
         };
@@ -33,7 +40,8 @@ class WSRPCClient {
           try {
             const data = JSON.parse(event.data);
             if (data.id !== undefined && this.pending.has(data.id)) {
-              const { resolve: res, reject: rej } = this.pending.get(data.id);
+              const { resolve: res, reject: rej, timer } = this.pending.get(data.id);
+              if (timer) clearTimeout(timer);
               this.pending.delete(data.id);
               
               if (data.error) {
@@ -48,17 +56,23 @@ class WSRPCClient {
         };
 
         this.ws.onerror = (err) => {
+          clearTimeout(connTimer);
           console.error("WSS Error:", err);
           if (!this.isConnected) reject(new Error("WebSocket connection failed. Ensure api_url is correct."));
         };
 
         this.ws.onclose = () => {
+          clearTimeout(connTimer);
           this.isConnected = false;
           this.connectionPromise = null;
-          this.pending.forEach(({reject}) => reject(new Error("WebSocket closed")));
+          this.pending.forEach(({reject: rej, timer}) => {
+            if (timer) clearTimeout(timer);
+            rej(new Error("WebSocket closed"));
+          });
           this.pending.clear();
         };
       } catch (e) {
+        clearTimeout(connTimer);
         reject(e);
       }
     });
@@ -78,6 +92,13 @@ class WSRPCClient {
       this.msgId++;
       const currentId = this.msgId;
 
+      const timer = setTimeout(() => {
+        if (this.pending.has(currentId)) {
+          this.pending.delete(currentId);
+          reject(new Error(`RPC call timeout (5s) for ${method}`));
+        }
+      }, 5000);
+
       const payload = {
         jsonrpc: '2.0',
         method: method,
@@ -88,11 +109,12 @@ class WSRPCClient {
         id: currentId
       };
 
-      this.pending.set(currentId, { resolve, reject });
+      this.pending.set(currentId, { resolve, reject, timer });
 
       try {
         this.ws.send(JSON.stringify(payload));
       } catch (e) {
+        clearTimeout(timer);
         this.pending.delete(currentId);
         reject(e);
       }
