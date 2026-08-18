@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowRight, Globe2, Server, X, User, Cloud } from 'lucide-react';
 import { ComposableMap, Geographies, Geography, ZoomableGroup } from 'react-simple-maps';
-import { geoEquirectangular } from 'd3-geo';
+import { geoEquirectangular, geoOrthographic, geoDistance, geoPath } from 'd3-geo';
+import { feature } from 'topojson-client';
 import topoData from '../assets/features.json';
 
 const VIRTUAL_NODE_LABELS = {
@@ -85,9 +86,6 @@ const getLinePath = (x1, y1, x2, y2) => {
 
 const mapWidth = 1600;
 const mapHeight = 700;
-const mapProjection = geoEquirectangular()
-  .scale(250)
-  .translate([mapWidth / 2, mapHeight / 2 + 140]);
 
 const RAW_GEO_REGIONS = [
   { id: 'unknown', regex: /.*/, lon: 0, lat: 0, color: 'rgba(255, 255, 255, 0.15)', country: 'Unknown', label: 'Unknown Location', glow: 'rgba(255, 255, 255, 0.5)' }
@@ -96,6 +94,24 @@ const RAW_GEO_REGIONS = [
 // GEO_REGIONS moved inside component to support dynamic config override
 
 const SegmentTopology = ({ data, onNodeDetail, config, hoveredNodeId, hoveredAlertEdge }) => {
+  const [mapMode, setMapMode] = useState('2d');
+  const [rotation, setRotation] = useState([-105, -30, 0]);
+  const [isDraggingState, setIsDraggingState] = useState(false);
+  const dragRef = useRef({ isDragging: false, startX: 0, startY: 0, rot: [0,0,0] });
+
+  const mapProjection = useMemo(() => {
+    if (mapMode === '3d') {
+      return geoOrthographic()
+        .scale(280)
+        .translate([mapWidth / 2, mapHeight / 2 + 140])
+        .rotate(rotation)
+        .clipAngle(90);
+    }
+    return geoEquirectangular()
+      .scale(250)
+      .translate([mapWidth / 2, mapHeight / 2 + 140]);
+  }, [mapMode, rotation]);
+
   const GEO_REGIONS = useMemo(() => {
     const customRegions = Array.isArray(config?.geo_regions) 
       ? config.geo_regions.map(r => {
@@ -112,12 +128,21 @@ const SegmentTopology = ({ data, onNodeDetail, config, hoveredNodeId, hoveredAle
     ];
 
     return merged.map(r => {
-      const [x, y] = mapProjection([r.lon, r.lat]);
-      if (r.id === 'entry') return { ...r, x: 1500, y: 100 };
-      if (r.id === 'target') return { ...r, x: 100, y: 100 };
-      return { ...r, x, y };
+      const proj = mapProjection([r.lon, r.lat]);
+      const [x, y] = proj || [-9999, -9999];
+      let isVisible = true;
+      if (mapMode === '3d') {
+        const centerLon = -rotation[0];
+        const centerLat = -rotation[1];
+        const dist = geoDistance([r.lon, r.lat], [centerLon, centerLat]);
+        isVisible = dist < Math.PI / 2;
+      }
+
+      if (r.id === 'entry') return { ...r, x: 1500, y: 100, isVisible: true };
+      if (r.id === 'target') return { ...r, x: 100, y: 100, isVisible: true };
+      return { ...r, x, y, isVisible };
     });
-  }, [config?.geo_regions]);
+  }, [config?.geo_regions, mapProjection, mapMode, rotation]);
 
   const [activeNodeId, setActiveNodeId] = useState(null);
   const [hoveredEdge, setHoveredEdge] = useState(null);
@@ -237,20 +262,73 @@ const SegmentTopology = ({ data, onNodeDetail, config, hoveredNodeId, hoveredAle
         // Stagger alternate nodes DOWNWARDS (+Y) so they perfectly duck under the upward-arcing lines
         const staggerY = cluster.length > 1 ? (index % 2 !== 0 ? 32 : 0) : 0;
 
-        
         nodeMap.set(item.nodeId, {
           id: item.nodeId,
           regionId: regionId,
           layerIndex: item.layerIndex,
           x: startX + index * (nodeWidth + gapX) - (nodeWidth / 2),
           y: startY + staggerY - (nodeHeight / 2),
-          width: nodeWidth, height: nodeHeight
+          width: nodeWidth, height: nodeHeight,
+          isVisible: cluster[0].region.isVisible
         });
       });
     });
 
     return { width, height, nodeMap, activeRegions: Array.from(activeRegions), regionNamesMap };
   }, [layers, data.agents]);
+
+  const canvasRef = useRef(null);
+  const geoJSONFeatures = useMemo(() => feature(topoData, topoData.objects.countries).features, []);
+
+  useEffect(() => {
+    if (mapMode !== '3d' || !canvasRef.current || !layout) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, layout.width, layout.height);
+    
+    const pathGenerator = geoPath().projection(mapProjection).context(ctx);
+    
+    // Draw Globe Background (Ocean)
+    ctx.beginPath();
+    pathGenerator({ type: 'Sphere' });
+    ctx.fillStyle = 'rgba(12, 14, 25, 0.4)';
+    ctx.fill();
+    
+    // Outer Glow / Stroke
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Draw Countries
+    geoJSONFeatures.forEach(d => {
+      const countryName = d.properties.name;
+      const activeRegion = layout.activeRegions.length > 0 ? GEO_REGIONS.find(r => r.country === countryName && layout.activeRegions.includes(r.id)) : null;
+      const isHighlighted = !!activeRegion;
+
+      ctx.beginPath();
+      pathGenerator(d);
+      
+      if (isHighlighted) {
+        ctx.fillStyle = activeRegion.color;
+        ctx.strokeStyle = activeRegion.glow;
+        ctx.lineWidth = 1.5;
+        // Optionally add glow effect in canvas
+        ctx.shadowColor = activeRegion.glow;
+        ctx.shadowBlur = 10;
+      } else {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.lineWidth = 0.5;
+        ctx.shadowBlur = 0; // Reset shadow
+      }
+      ctx.fill();
+      ctx.stroke();
+      ctx.shadowBlur = 0; // Reset after stroke just in case
+    });
+
+  }, [mapProjection, mapMode, geoJSONFeatures, layout, GEO_REGIONS]);
 
   if (!data || !data.agents) {
     return <div className="topology-empty">Loading dashboard data...</div>;
@@ -365,6 +443,39 @@ const SegmentTopology = ({ data, onNodeDetail, config, hoveredNodeId, hoveredAle
     setHoveredEdge(null);
     setPinnedEdgeKey(null);
   };
+  // Drag Handlers for 3D Globe Rotation
+  const requestRef = useRef();
+
+  const handleMouseDown = (e) => {
+    if (mapMode !== '3d') return;
+    dragRef.current = { isDragging: true, startX: e.clientX, startY: e.clientY, rot: rotation };
+    setIsDraggingState(true);
+  };
+  
+  const handleMouseMove = (e) => {
+    if (!dragRef.current.isDragging || mapMode !== '3d') return;
+    
+    if (requestRef.current) {
+      cancelAnimationFrame(requestRef.current);
+    }
+    
+    requestRef.current = requestAnimationFrame(() => {
+      const dx = e.clientX - dragRef.current.startX;
+      const dy = e.clientY - dragRef.current.startY;
+      // Map pixels to rotation degrees
+      const rX = dragRef.current.rot[0] + dx * 0.5;
+      const rY = dragRef.current.rot[1] - dy * 0.5;
+      // Limit pitch to avoid flipping upside down
+      const rYClamped = Math.max(-90, Math.min(90, rY));
+      setRotation([rX, rYClamped, 0]);
+    });
+  };
+  
+  const handleMouseUp = () => {
+    dragRef.current.isDragging = false;
+    setIsDraggingState(false);
+  };
+
   return (
     <div className="route-matrix-shell">
       <div 
@@ -372,18 +483,43 @@ const SegmentTopology = ({ data, onNodeDetail, config, hoveredNodeId, hoveredAle
         style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}
       >
         
-        {/* Vector Background Map */}
-        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0.7 }}>
+        {/* Toggle Controls */}
+        <div style={{ position: 'absolute', top: 20, right: 20, zIndex: 10, display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: '20px', padding: '4px', border: '1px solid var(--border-light)' }}>
+          <button type="button" onClick={() => setMapMode('2d')} style={{ padding: '6px 16px', borderRadius: '16px', background: mapMode === '2d' ? 'var(--accent-cyan)' : 'transparent', color: mapMode === '2d' ? '#fff' : 'var(--text-muted)', fontSize: '12px', fontWeight: 600, border: 'none', cursor: 'pointer', transition: 'all 0.2s' }}>2D Map</button>
+          <button type="button" onClick={() => setMapMode('3d')} style={{ padding: '6px 16px', borderRadius: '16px', background: mapMode === '3d' ? 'var(--accent-cyan)' : 'transparent', color: mapMode === '3d' ? '#fff' : 'var(--text-muted)', fontSize: '12px', fontWeight: 600, border: 'none', cursor: 'pointer', transition: 'all 0.2s' }}>3D Globe</button>
+        </div>
+
+        {/* Canvas Background Map (3D Mode) */}
+        {mapMode === '3d' && layout && (
+          <canvas
+            ref={canvasRef}
+            width={layout.width}
+            height={layout.height}
+            style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0.7 }}
+          />
+        )}
+
+        {/* Vector Background Map / SVG Overlay */}
+        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: mapMode === '3d' ? 1 : 0.7 }}>
           <ComposableMap 
             projection={mapProjection} 
             width={layout.width} 
             height={layout.height} 
-            style={{ width: '100%', height: '100%' }}
+            style={{ width: '100%', height: '100%', cursor: mapMode === '3d' ? (isDraggingState ? 'grabbing' : 'grab') : 'default' }}
             viewBox={`0 0 ${layout.width} ${layout.height}`}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
           >
-            <ZoomableGroup zoom={1} maxZoom={5} translateExtent={[[0, 0], [layout.width, layout.height]]}>
-              <Geographies geography={topoData}>
-              {({ geographies }) =>
+            {mapMode === '3d' && (
+              <circle cx={layout.width / 2} cy={layout.height / 2 + 140} r={280} fill="transparent" stroke="rgba(255,255,255,0)" style={{ filter: 'drop-shadow(0 0 40px rgba(14, 165, 233, 0.2))' }} />
+            )}
+            
+            <ZoomableGroup zoom={1} maxZoom={mapMode === '3d' ? 1 : 5} disablePanning={mapMode === '3d'} translateExtent={[[0, 0], [layout.width, layout.height]]}>
+              {mapMode === '2d' && (
+                <Geographies geography={topoData}>
+                {({ geographies }) =>
                 geographies.map((geo) => {
                   const countryName = geo.properties.name;
                   const activeRegion = GEO_REGIONS.find(r => r.country === countryName && layout.activeRegions.includes(r.id));
@@ -423,7 +559,8 @@ const SegmentTopology = ({ data, onNodeDetail, config, hoveredNodeId, hoveredAle
                   );
                 })
               }
-            </Geographies>
+              </Geographies>
+            )}
           <defs>
             <marker id="arrow-healthy" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
               <path d="M0,0 L0,6 L6,3 z" fill="rgba(16, 185, 129, 0.8)" />
@@ -444,6 +581,7 @@ const SegmentTopology = ({ data, onNodeDetail, config, hoveredNodeId, hoveredAle
             {GEO_REGIONS.map(region => {
               if (region.color === 'transparent') return null;
               if (!layout.activeRegions.includes(region.id)) return null;
+              if (!region.isVisible) return null;
               return (
                 <ellipse 
                   key={`region-${region.id}`} 
@@ -463,7 +601,7 @@ const SegmentTopology = ({ data, onNodeDetail, config, hoveredNodeId, hoveredAle
             {visibleEdges.map((edge, edgeIndex) => {
               const from = layout.nodeMap.get(edge.from);
               const to = layout.nodeMap.get(edge.to);
-              if (!from || !to) return null;
+              if (!from || !to || !from.isVisible || !to.isVisible) return null;
 
               const key = `${edge.from}->${edge.to}`;
               const latency = data.latencies ? data.latencies[key] : null;
@@ -525,7 +663,7 @@ const SegmentTopology = ({ data, onNodeDetail, config, hoveredNodeId, hoveredAle
           <g className="route-node-worst-badges">
             {Array.from(worstOutgoingByNode.entries()).map(([nodeId, worst]) => {
               const rect = layout.nodeMap.get(nodeId);
-              if (!rect) return null;
+              if (!rect || !rect.isVisible) return null;
               const value = worst.latency.ping === 'fail' ? 'FAIL' : `${worst.latency.ping}ms`;
               const text = worst.routeCount > 1 ? `MAX ${value}` : value;
               const width = Math.max(48, (text.length * 6) + 16);
@@ -558,7 +696,7 @@ const SegmentTopology = ({ data, onNodeDetail, config, hoveredNodeId, hoveredAle
 
               return nodes.map((nodeId) => {
                 const rect = layout.nodeMap.get(nodeId);
-                if (!rect) return null;
+                if (!rect || !rect.isVisible) return null;
                 const stats = data.agents[nodeId];
                 const label = getNodeLabel(nodeId, stats);
                 const isUuid = isRealUuid(nodeId);
