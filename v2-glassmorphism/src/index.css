@@ -30,7 +30,8 @@
 html { color-scheme: dark; background: var(--void); }
 
 body {
-  min-width: 1024px;
+  min-width: 0;
+  width: 100%;
   min-height: 100vh;
   background-color: var(--void);
   background-image: 
@@ -51,17 +52,17 @@ body {
     -1px -1px,
     -1px -1px,
     center center;
-  padding: 32px;
+  padding: 24px;
   display: flex;
   justify-content: center;
   align-items: center;
   color: var(--text-primary);
-  overflow: hidden;
+  overflow-x: hidden;
 }
 
 #root {
   width: 100%;
-  height: 100%;
+  min-height: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -142,6 +143,85 @@ button, input { font: inherit; color: inherit; }
 }
 
 
+
+/* Dashboard Main & Sidebar Layout */
+.stats-sidebar {
+  width: 280px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.main-content-pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.dashboard-top-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 8px 0;
+}
+
+.header-chips-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.header-stat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.chip-muted-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.chip-value {
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.chip-divider {
+  width: 1px;
+  height: 12px;
+  background: var(--border);
+}
+
+.header-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.dashboard-content-split {
+  display: flex;
+  gap: 24px;
+  flex: 1;
+  min-height: 0;
+}
 
 /* Sidebar */
 .sidebar {
@@ -1207,4 +1287,292 @@ button, input { font: inherit; color: inherit; }
   filter: drop-shadow(0 0 10px currentColor);
 }
 
-/* Media Queries */
+/* Servers Section Styles */
+.servers-section {
+  padding: 32px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.servers-section-title {
+  font-size: 20px;
+  letter-spacing: 0.02em;
+  font-weight: 600;
+  margin-bottom: 24px;
+}
+
+.servers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.node-card {
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.right-sidebar {
+  width: 320px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  padding-right: 8px;
+  box-sizing: border-box;
+}
+
+/* Media Queries for Tablet & Mobile Responsive Design */
+@media (max-width: 1024px) {
+  body {
+    padding: 12px;
+    align-items: flex-start;
+    overflow-y: auto;
+  }
+
+  .app-layout {
+    flex-direction: column !important;
+    height: auto !important;
+    min-height: calc(100vh - 24px) !important;
+    padding: 14px !important;
+    padding-bottom: 96px !important; /* Space for mobile floating nav */
+    border-radius: 20px !important;
+    gap: 16px !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    transform: none !important;
+    filter: none !important;
+  }
+
+  /* Bottom Floating Navigation Bar on Mobile */
+  .thin-nav {
+    position: fixed !important;
+    bottom: 16px !important;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 16px) !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: calc(100% - 32px) !important;
+    max-width: 440px !important;
+    height: 58px !important;
+    flex-direction: row !important;
+    justify-content: space-around !important;
+    align-items: center !important;
+    padding: 0 16px !important;
+    border-radius: 30px !important;
+    z-index: 999999 !important;
+    backdrop-filter: blur(24px) !important;
+    -webkit-backdrop-filter: blur(24px) !important;
+    background: rgba(13, 16, 28, 0.94) !important;
+    border: 1px solid rgba(255, 255, 255, 0.18) !important;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+  }
+
+  .thin-nav .brand-icon-small {
+    display: none !important;
+  }
+
+  .thin-nav button {
+    width: 44px !important;
+    height: 44px !important;
+  }
+
+  /* Main Content Pane comes FIRST on mobile so Status Bar & Topology show at the very top */
+  .main-content-pane {
+    order: 1 !important;
+    width: 100% !important;
+    padding-right: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 16px !important;
+  }
+
+  .dashboard-top-header {
+    order: -1 !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+
+  .header-chips-row {
+    width: 100% !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+  }
+
+  .header-stat-chip {
+    width: 100% !important;
+    display: flex !important;
+    justify-content: space-around !important;
+    padding: 8px 12px !important;
+    font-size: 12px !important;
+  }
+
+  .header-controls-row {
+    width: 100% !important;
+    justify-content: space-between !important;
+  }
+
+  .dashboard-content-split {
+    order: 2 !important;
+    flex-direction: column !important;
+    gap: 16px !important;
+  }
+
+  .servers-section {
+    order: 2 !important;
+    padding: 16px !important;
+  }
+
+  .topology-area {
+    order: 1 !important;
+  }
+
+  .alerts-sidebar {
+    order: 2 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    padding-right: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Stats Sidebar comes AFTER Topology on mobile */
+  .stats-sidebar {
+    order: 2 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: none !important;
+    overflow-y: visible !important;
+    padding-right: 0 !important;
+    box-sizing: border-box !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 16px !important;
+  }
+
+  .stats-sidebar > header {
+    display: none !important;
+  }
+
+  .system-overview-card {
+    order: 1 !important;
+  }
+
+  .server-nodes-card {
+    order: 2 !important;
+  }
+
+  /* Main Dashboard Content Layout: 1 Column */
+  .dashboard-content {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  .main-content {
+    width: 100% !important;
+  }
+
+  .bottom-row {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  /* Topology Area on Mobile: Smooth horizontal scroll */
+  .topology-area {
+    min-height: 380px !important;
+    width: 100% !important;
+  }
+
+  .route-matrix-scroll {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    display: flex !important;
+    justify-content: flex-start !important;
+    align-items: center !important;
+    padding: 8px !important;
+  }
+
+  .route-matrix-canvas {
+    min-width: 600px !important;
+  }
+
+  /* Servers Card Grid on Mobile: 1 column */
+  .servers-section {
+    padding: 16px !important;
+  }
+
+  .servers-grid {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  /* KPI / Metrics Row: 2 columns */
+  .kpi-row, .metrics-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 12px !important;
+  }
+
+  /* Modal Dialogs on Mobile */
+  .modal-container, .node-detail-modal {
+    width: calc(100vw - 24px) !important;
+    max-width: 520px !important;
+    max-height: 88vh !important;
+    padding: 16px !important;
+  }
+}
+
+@media (max-width: 600px) {
+  body {
+    padding: 8px;
+  }
+
+  .app-layout {
+    padding: 12px;
+    padding-bottom: 80px;
+    border-radius: 16px;
+  }
+
+  .servers-section {
+    padding: 12px !important;
+  }
+
+  .servers-section-title {
+    font-size: 16px !important;
+    margin-bottom: 14px !important;
+  }
+
+  .node-card {
+    padding: 14px 12px !important;
+    gap: 12px !important;
+  }
+
+  .kpi-row, .metrics-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .header-stat-chip {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    justify-content: center !important;
+  }
+
+  .topology-title {
+    font-size: 13px;
+  }
+
+  .topology-subtitle {
+    font-size: 11px;
+  }
+
+  .topology-focus-bar {
+    width: calc(100% - 24px) !important;
+    bottom: 80px !important;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 12px !important;
+    border-radius: 12px !important;
+  }
+}

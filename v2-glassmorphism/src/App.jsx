@@ -363,7 +363,7 @@ const App = () => {
 
       {/* STATS SIDEBAR (Only on Dashboard) */}
       {activeTab === 'Dashboard' && (
-        <aside className="stats-sidebar" style={{ width: '280px', display: 'flex', flexDirection: 'column', gap: '24px', overflowY: 'auto', paddingRight: '8px' }}>
+        <aside className="stats-sidebar">
           <header style={{ padding: '8px 0' }}>
             <div style={{ fontSize: '18px', fontWeight: 'bold', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '8px' }}>
               以太监控
@@ -371,7 +371,7 @@ const App = () => {
             <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>/ 网络视界</div>
           </header>
 
-        <div className="glass-panel" style={{ padding: '20px' }}>
+        <div className="glass-panel system-overview-card" style={{ padding: '20px' }}>
           <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '16px', letterSpacing: '0.1em', display: 'flex', justifyContent: 'space-between' }}>
             系统总览 <span>...</span>
           </div>
@@ -412,7 +412,7 @@ const App = () => {
                      </div>
                    </div>
                    
-                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', marginTop: '4px' }}>
+                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', marginTop: '4px' }}>
                      <div style={{ flex: 1, background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px' }}><ArrowDown size={12} color="var(--accent-cyan)" /> 入站</div>
                        <div style={{ fontSize: '13px', fontWeight: 600, color: '#fff' }}>{displayRx}</div>
@@ -430,11 +430,11 @@ const App = () => {
           </div>
         </div>
 
-        <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column', flex: 1, minHeight: '300px' }}>
+        <div className="glass-panel server-nodes-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', flex: 1, minHeight: '260px' }}>
           <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '16px', letterSpacing: '0.1em' }}>
             服务器节点 ({nodes.filter(n => n.status === 'online').length} 在线)
           </div>
-          <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', paddingRight: '4px' }}>
+          <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', paddingRight: '4px', maxHeight: '300px' }}>
             {nodes.map(node => (
               <div 
                 key={node.id}
@@ -467,72 +467,70 @@ const App = () => {
       )}
 
       {/* MAIN CONTENT */}
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '24px', overflowY: 'auto', gridColumn: activeTab === 'Dashboard' ? '3' : '2 / -1', paddingRight: '8px' }}>
-        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0' }}>
-          <div style={{ display: 'flex', gap: '24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', background: 'rgba(255,255,255,0.03)', padding: '6px 16px', borderRadius: '20px', border: '1px solid var(--border)' }}>
-               <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>速率↓</span>
-               <span style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>{totalRx}</span>
-               <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>速率↑</span>
-               <span style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>{totalTx}</span>
-               <div style={{ width: '1px', height: '12px', background: 'var(--border)' }}></div>
-               <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>总量↓</span>
-               <span style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>{totalRxVolume}</span>
-               <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>总量↑</span>
-               <span style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>{totalTxVolume}</span>
+      <main className="main-content-pane custom-scrollbar">
+        <header className="dashboard-top-header">
+          <div className="header-chips-row">
+            <div className="header-stat-chip">
+               <span className="chip-muted-label">速率↓</span>
+               <span className="chip-value">{totalRx}</span>
+               <span className="chip-muted-label">速率↑</span>
+               <span className="chip-value">{totalTx}</span>
+               <div className="chip-divider"></div>
+               <span className="chip-muted-label">总量↓</span>
+               <span className="chip-value">{totalRxVolume}</span>
+               <span className="chip-muted-label">总量↑</span>
+               <span className="chip-value">{totalTxVolume}</span>
             </div>
             
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', background: 'rgba(255,255,255,0.03)', padding: '6px 16px', borderRadius: '20px', border: '1px solid var(--border)' }}>
+            <div className="header-stat-chip">
                <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--healthy)' }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--healthy)' }}></span> {nodes.filter(n => n.status === 'online').length} 在线</span>
                <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--warning)' }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--warning)' }}></span> {routes.incidents.filter(i => i.state === 'warning').length} 警告</span>
                <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--critical)' }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--critical)' }}></span> {nodes.filter(n => n.status === 'offline').length} 离线</span>
             </div>
           </div>
           
-          <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+          <div className="header-controls-row">
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.05)', padding: '6px 12px', borderRadius: '20px', border: '1px solid var(--border-light)' }}>
               <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>透明度</span>
               <input 
                 type="range" min="0" max="100" value={glassLevel}
                 onChange={(e) => setGlassLevel(Number(e.target.value))}
-                style={{ width: '80px', accentColor: 'var(--accent-cyan)' }}
+                style={{ width: '70px', accentColor: 'var(--accent-cyan)' }}
               />
             </div>
             
-            <Activity size={20} color="var(--text-secondary)" />
+            <Activity size={18} color="var(--text-secondary)" />
             <div style={{ position: 'relative' }}>
-              <Bell size={20} color="var(--text-secondary)" />
+              <Bell size={18} color="var(--text-secondary)" />
               {routes.incidents.length > 0 && <span style={{ position: 'absolute', top: -2, right: -2, width: 8, height: 8, background: 'var(--critical)', borderRadius: '50%' }} />}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--accent-purple)', display: 'grid', placeItems: 'center', fontWeight: 'bold', fontSize: '14px', color: '#fff' }}>AD</div>
-              <div style={{ fontSize: '13px' }}>
-                <div style={{ fontWeight: 600 }}>管理员</div>
-              </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--accent-purple)', display: 'grid', placeItems: 'center', fontWeight: 'bold', fontSize: '12px', color: '#fff' }}>AD</div>
+              <div style={{ fontSize: '12px', fontWeight: 600 }}>管理员</div>
             </div>
           </div>
         </header>
 
         {activeTab === 'Dashboard' && (
-          <div style={{ display: 'flex', gap: '24px', flex: 1, minHeight: 0 }}>
+          <div className="dashboard-content-split">
             <section className="glass-panel topology-area" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <div className="topology-header" style={{ padding: '24px 32px 0 32px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div className="topology-header" style={{ padding: '16px 20px 0 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
                 <div>
-                  <h2 style={{ fontSize: '20px', letterSpacing: '0.02em', fontWeight: 600 }}>网络拓扑星图</h2>
-                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '6px' }}>实时网络：全球基础设施地图</div>
+                  <h2 style={{ fontSize: '18px', letterSpacing: '0.02em', fontWeight: 600 }}>网络拓扑星图</h2>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>实时网络：全球基础设施地图</div>
                 </div>
                 
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '16px' }}>
-                  <div style={{ display: 'flex', gap: '16px', fontSize: '12px', background: 'rgba(255,255,255,0.03)', padding: '6px 16px', borderRadius: '16px', border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: '12px', fontSize: '11px', background: 'rgba(255,255,255,0.03)', padding: '6px 12px', borderRadius: '12px', border: '1px solid var(--border)', flexWrap: 'wrap' }}>
                     <span style={{ color: 'var(--text-secondary)' }}>区域: <span style={{ color: 'var(--accent-cyan)' }}>全球</span></span>
                     <span style={{ color: 'var(--text-secondary)' }}>平均延迟: <span style={{ color: '#fff' }}>{data.agents ? '42ms' : '-'}</span></span>
                     <span style={{ color: 'var(--text-secondary)' }}>总吞吐量: <span style={{ color: '#fff' }}>{totalRx}</span></span>
                   </div>
                   
-                  <div style={{ display: 'flex', gap: '16px', fontSize: '12px' }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--healthy)', boxShadow: '0 0 8px var(--healthy)' }}></span> 健康 (绿)</span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--warning)', boxShadow: '0 0 8px var(--warning)' }}></span> 警告 (橙)</span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--critical)', boxShadow: '0 0 8px var(--critical)' }}></span> 严重 (红)</span>
+                  <div style={{ display: 'flex', gap: '12px', fontSize: '11px', flexWrap: 'wrap' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--healthy)', boxShadow: '0 0 6px var(--healthy)' }}></span> 健康</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--warning)', boxShadow: '0 0 6px var(--warning)' }}></span> 警告</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--critical)', boxShadow: '0 0 6px var(--critical)' }}></span> 严重</span>
                   </div>
                 </div>
               </div>
@@ -542,12 +540,12 @@ const App = () => {
               </div>
             </section>
             
-            <aside className="right-sidebar custom-scrollbar" style={{ width: '320px', display: 'flex', flexDirection: 'column', gap: '24px', overflowY: 'auto', paddingRight: '8px' }}>
-              <div className="glass-panel" style={{ padding: '20px', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <aside className="right-sidebar alerts-sidebar custom-scrollbar">
+              <div className="glass-panel" style={{ padding: '20px', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: '240px', width: '100%', boxSizing: 'border-box' }}>
                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '16px', letterSpacing: '0.1em', display: 'flex', justifyContent: 'space-between' }}>
                    实时告警 ({routes.incidents.length}) <span>•••</span>
                  </div>
-                 <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px', paddingRight: '4px' }}>
+                 <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', paddingRight: '4px' }}>
                     {routes.incidents.map((incident, i) => {
                       const fromName = getNodeName(incident.from, data, config);
                       const toName = incident.to ? getNodeName(incident.to, data, config) : '未知目标';
@@ -562,10 +560,10 @@ const App = () => {
                           style={{ 
                             background: isCritical ? 'rgba(239, 68, 68, 0.08)' : 'rgba(245, 158, 11, 0.08)',
                             borderLeft: `2px solid ${isCritical ? 'var(--critical)' : 'var(--warning)'}`,
-                            padding: '12px',
+                            padding: '10px 12px',
                             borderRadius: '0 8px 8px 0',
                             display: 'flex', 
-                            gap: '12px', 
+                            gap: '10px', 
                             alignItems: 'center',
                             cursor: 'pointer',
                             transition: 'all 0.2s ease',
@@ -573,15 +571,15 @@ const App = () => {
                           }}
                         >
                           <div style={{ color: isCritical ? 'var(--critical)' : 'var(--warning)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            {isCritical ? <X size={16}/> : <Activity size={16}/>}
+                            {isCritical ? <X size={15}/> : <Activity size={15}/>}
                           </div>
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                               {fromName} ➔ {toName}
                             </div>
-                            <div style={{ fontSize: '12px', color: isCritical ? 'rgba(239, 68, 68, 0.8)' : 'rgba(245, 158, 11, 0.8)', marginTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
+                            <div style={{ fontSize: '11px', color: isCritical ? 'rgba(239, 68, 68, 0.8)' : 'rgba(245, 158, 11, 0.8)', marginTop: '2px', display: 'flex', justifyContent: 'space-between' }}>
                               <span>延迟突增</span>
-                              <span style={{ fontWeight: 600 }}>{incident.latency?.ping}ms</span>
+                              <span style={{ fontWeight: 600, fontFamily: 'monospace' }}>{incident.latency?.ping}ms</span>
                             </div>
                           </div>
                         </div>
@@ -591,15 +589,15 @@ const App = () => {
                  </div>
               </div>
 
-              <div id="issue-tray-portal" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}></div>
+              <div id="issue-tray-portal" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '240px' }}></div>
             </aside>
           </div>
         )}
 
         {activeTab === 'Servers' && (
-          <section className="glass-panel" style={{ flex: 1, padding: '32px', overflowY: 'auto' }}>
-            <h2 style={{ fontSize: '20px', letterSpacing: '0.02em', fontWeight: 600, marginBottom: '24px' }}>SERVERS ({nodes.length})</h2>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: '24px' }}>
+          <section className="glass-panel servers-section" style={{ flex: 1, overflowY: 'auto' }}>
+            <h2 className="servers-section-title">SERVERS ({nodes.length})</h2>
+            <div className="servers-grid">
               {nodes.map(node => (
                 <NodeCard key={node.id} stats={node} onClick={() => setSelectedNode(node)} />
               ))}

@@ -7,36 +7,39 @@ import topoData from '../assets/features.json';
 
 const VIRTUAL_NODE_LABELS = {
   client: 'Client',
-  internet: 'Internet'
+  internet: 'Internet',
+  '外网': '外网'
 };
 
 const LAYER_THEMES = [
-  'access',
   'transit',
   'landing',
-  'target'
+  'target',
+  'custom'
 ];
 
 const EMPTY_EDGES = [];
 
-const VIEWPORT = {
-  paddingX: 30,
-  paddingTop: 78,
-  paddingBottom: 58,
-  defaultLayerGap: 300,
-  layerGaps: [280, 460, 280],
-  nodeWidth: 112,
-  nodeHeight: 46,
-  nodeGap: 58
+const LAYER_VIEWPORT = {
+  paddingX: 24,
+  paddingTop: 48,
+  paddingBottom: 36,
+  defaultLayerGap: 240,
+  layerGaps: [240, 240, 240],
+  nodeWidth: 136,
+  nodeHeight: 56,
+  nodeGap: 24
 };
 
-const getLayerX = (layerIndex) => (
-  VIEWPORT.paddingX +
-  Array.from(
-    { length: layerIndex },
-    (_, gapIndex) => VIEWPORT.layerGaps[gapIndex] || VIEWPORT.defaultLayerGap
-  ).reduce((total, gap) => total + gap, 0)
-);
+const mapWidth = 1600;
+const mapHeight = 700;
+const mapProjection = geoEquirectangular()
+  .scale(250)
+  .translate([mapWidth / 2, mapHeight / 2 + 140]);
+
+const RAW_GEO_REGIONS = [
+  { id: 'unknown', regex: /.*/, lon: 0, lat: 0, color: 'rgba(255, 255, 255, 0.15)', country: 'Unknown', label: 'Unknown Location', glow: 'rgba(255, 255, 255, 0.5)' }
+];
 
 const isRealUuid = (nodeId) => (
   typeof nodeId === 'string' &&
@@ -52,7 +55,7 @@ const getNodeLabel = (nodeId, stats, config) => {
 
 const trimNodeLabel = (label) => {
   if (!label) return '';
-  return label.length > 9 ? `${label.slice(0, 8)}...` : label;
+  return label.length > 10 ? `${label.slice(0, 9)}...` : label;
 };
 
 const getLatencyState = (latency) => {
@@ -69,33 +72,56 @@ const getLatencyLabel = (latency) => {
   return `${latency.ping}ms`;
 };
 
-const getLinePath = (x1, y1, x2, y2) => {
+const getMapArcPath = (x1, y1, x2, y2) => {
   const dx = x2 - x1;
   const dy = y2 - y1;
   const distance = Math.sqrt(dx*dx + dy*dy);
-  
   const midX = (x1 + x2) / 2;
   const midY = (y1 + y2) / 2;
-  
-  // Create a realistic flight-path arc (bows upward on the map)
   const arcHeight = distance * 0.25;
-  
   return `M ${x1} ${y1} Q ${midX} ${midY - arcHeight}, ${x2} ${y2}`;
 };
 
-const mapWidth = 1600;
-const mapHeight = 700;
-const mapProjection = geoEquirectangular()
-  .scale(250)
-  .translate([mapWidth / 2, mapHeight / 2 + 140]);
-
-const RAW_GEO_REGIONS = [
-  { id: 'unknown', regex: /.*/, lon: 0, lat: 0, color: 'rgba(255, 255, 255, 0.15)', country: 'Unknown', label: 'Unknown Location', glow: 'rgba(255, 255, 255, 0.5)' }
-];
-
-// GEO_REGIONS moved inside component to support dynamic config override
+const getBezierPath = (x1, y1, x2, y2) => {
+  const distance = Math.max(32, x2 - x1);
+  const curve = Math.min(70, distance * 0.44);
+  return `M ${x1} ${y1} C ${x1 + curve} ${y1}, ${x2 - curve} ${y2}, ${x2} ${y2}`;
+};
 
 const SegmentTopology = ({ data, onNodeDetail, config, hoveredNodeId, hoveredAlertEdge }) => {
+  // Pure automatic detection: mobile displays layered topology, desktop displays 2D map
+  const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 960 : false));
+  const [activeNodeId, setActiveNodeId] = useState(null);
+  const [hoveredEdge, setHoveredEdge] = useState(null);
+  const [hoveredMapRegion, setHoveredMapRegion] = useState(null);
+  const [pinnedEdgeKey, setPinnedEdgeKey] = useState(null);
+  const [portalTarget, setPortalTarget] = useState(null);
+
+  useEffect(() => {
+    setPortalTarget(document.getElementById('issue-tray-portal'));
+  }, []);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 960);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (!activeNodeId && !pinnedEdgeKey) return undefined;
+    const clearFocus = (event) => {
+      if (event.key === 'Escape') {
+        setActiveNodeId(null);
+        setHoveredEdge(null);
+        setPinnedEdgeKey(null);
+      }
+    };
+    window.addEventListener('keydown', clearFocus);
+    return () => window.removeEventListener('keydown', clearFocus);
+  }, [activeNodeId, pinnedEdgeKey]);
+
   const GEO_REGIONS = useMemo(() => {
     const customRegions = Array.isArray(config?.geo_regions) 
       ? config.geo_regions.map(r => {
@@ -119,25 +145,6 @@ const SegmentTopology = ({ data, onNodeDetail, config, hoveredNodeId, hoveredAle
     });
   }, [config?.geo_regions]);
 
-  const [activeNodeId, setActiveNodeId] = useState(null);
-  const [hoveredEdge, setHoveredEdge] = useState(null);
-  const [hoveredMapRegion, setHoveredMapRegion] = useState(null);
-  const [pinnedEdgeKey, setPinnedEdgeKey] = useState(null);
-
-  useEffect(() => {
-    if (!activeNodeId && !pinnedEdgeKey) return undefined;
-    const clearFocus = (event) => {
-      if (event.key === 'Escape') {
-        // [CAUTION] Local UI state mutation triggered by a global keyboard listener.
-        setActiveNodeId(null);
-        setHoveredEdge(null);
-        setPinnedEdgeKey(null);
-      }
-    };
-    window.addEventListener('keydown', clearFocus);
-    return () => window.removeEventListener('keydown', clearFocus);
-  }, [activeNodeId, pinnedEdgeKey]);
-
   const topology = data && data.config && data.config.topology ? data.config.topology : null;
   const edges = data && data.config && Array.isArray(data.config.edges) ? data.config.edges : EMPTY_EDGES;
   const layers = topology && Array.isArray(topology.layers) ? topology.layers : null;
@@ -152,12 +159,39 @@ const SegmentTopology = ({ data, onNodeDetail, config, hoveredNodeId, hoveredAle
     return Array.from(edgeMap.values());
   }, [edges]);
 
-  const layout = useMemo(() => {
+  // Layered Layout for Mobile
+  const layeredLayout = useMemo(() => {
     if (!layers) return null;
-
-    const width = 1600;
-    const height = 700;
+    const maxNodes = layers.reduce((max, layer) => Math.max(max, Array.isArray(layer.nodes) ? layer.nodes.length : 0), 0);
+    const layerSpan = (layers.length - 1) * LAYER_VIEWPORT.defaultLayerGap;
+    const width = (LAYER_VIEWPORT.paddingX * 2) + layerSpan + LAYER_VIEWPORT.nodeWidth;
+    const height = LAYER_VIEWPORT.paddingTop + LAYER_VIEWPORT.paddingBottom + (maxNodes * LAYER_VIEWPORT.nodeHeight) + (Math.max(0, maxNodes - 1) * LAYER_VIEWPORT.nodeGap);
     const nodeMap = new Map();
+
+    layers.forEach((layer, layerIndex) => {
+      const nodes = Array.isArray(layer.nodes) ? layer.nodes : [];
+      const columnHeight = (nodes.length * LAYER_VIEWPORT.nodeHeight) + (Math.max(0, nodes.length - 1) * LAYER_VIEWPORT.nodeGap);
+      const firstY = LAYER_VIEWPORT.paddingTop + ((height - LAYER_VIEWPORT.paddingTop - LAYER_VIEWPORT.paddingBottom - columnHeight) / 2);
+      const x = LAYER_VIEWPORT.paddingX + (layerIndex * LAYER_VIEWPORT.defaultLayerGap);
+
+      nodes.forEach((nodeId, nodeIndex) => {
+        nodeMap.set(nodeId, {
+          id: nodeId,
+          layerIndex,
+          x,
+          y: firstY + (nodeIndex * (LAYER_VIEWPORT.nodeHeight + LAYER_VIEWPORT.nodeGap)),
+          width: LAYER_VIEWPORT.nodeWidth,
+          height: LAYER_VIEWPORT.nodeHeight
+        });
+      });
+    });
+
+    return { width, height, nodeMap };
+  }, [layers]);
+
+  // 2D Map Layout for Desktop
+  const mapLayout = useMemo(() => {
+    if (!layers) return null;
     const regionNodes = new Map();
     const activeRegions = new Set();
     const explicitlyMappedNodes = new Set();
@@ -190,6 +224,24 @@ const SegmentTopology = ({ data, onNodeDetail, config, hoveredNodeId, hoveredAle
       });
     });
 
+    const nodeMap = new Map();
+    regionNodes.forEach((cluster, regionId) => {
+      const total = cluster.length;
+      cluster.forEach((item, index) => {
+        const angle = total === 1 ? 0 : (index / total) * 2 * Math.PI;
+        const radius = total === 1 ? 0 : Math.min(70, 24 + total * 8);
+        const x = item.region.x + Math.cos(angle) * radius;
+        const y = item.region.y + Math.sin(angle) * radius;
+        nodeMap.set(item.nodeId, {
+          x: Math.max(20, Math.min(mapWidth - 100, x)),
+          y: Math.max(20, Math.min(mapHeight - 60, y)),
+          width: 36,
+          height: 32,
+          regionId
+        });
+      });
+    });
+
     const regionNamesMap = new Map();
     if (data.agents) {
       Object.keys(data.agents).forEach(nodeId => {
@@ -197,7 +249,7 @@ const SegmentTopology = ({ data, onNodeDetail, config, hoveredNodeId, hoveredAle
         const flag = data.agents[nodeId].flag || config?.node_metadata?.[nodeId]?.flag || '';
         let matchedRegion = null;
         for (const region of GEO_REGIONS) {
-          if (region.regex.test(name) || region.regex.test(nodeId) || region.regex.test(flag)) {
+          if (region.regex.test(name) || region.regex.test(nodeId) || (flag && region.regex.test(flag))) {
             matchedRegion = region;
             break;
           }
@@ -211,443 +263,501 @@ const SegmentTopology = ({ data, onNodeDetail, config, hoveredNodeId, hoveredAle
       });
     }
 
-    regionNodes.forEach((cluster, regionId) => {
-      const { x: centerX, y: centerY } = cluster[0].region;
-      
-      const nodeWidth = 22;
-      const nodeHeight = 32;
-      
-      // Auto-spread horizontally, sorted by route order (layerIndex)
-      // Since data flows Right-to-Left, highest layer index (closest to target) is on the left
-      cluster.sort((a, b) => b.layerIndex - a.layerIndex);
-      
-      const gapX = 28; // Horizontal spacing
-      
-      const totalWidth = cluster.length * nodeWidth + (cluster.length - 1) * gapX;
-      
-      let startX = centerX - (totalWidth / 2) + (nodeWidth / 2);
-      
-      // Visual Coastal Offset: push large clusters inland so they don't fall into the ocean
-      if (regionId === 'us-west') startX += 50; // Push LA inland (right)
-      if (regionId === 'us-east') startX -= 40; // Push NY inland (left)
-      
-      const startY = centerY - 10; // Shift entire cluster slightly up
-
-      cluster.forEach((item, index) => {
-        // Stagger alternate nodes DOWNWARDS (+Y) so they perfectly duck under the upward-arcing lines
-        const staggerY = cluster.length > 1 ? (index % 2 !== 0 ? 32 : 0) : 0;
-
-        
-        nodeMap.set(item.nodeId, {
-          id: item.nodeId,
-          regionId: regionId,
-          layerIndex: item.layerIndex,
-          x: startX + index * (nodeWidth + gapX) - (nodeWidth / 2),
-          y: startY + staggerY - (nodeHeight / 2),
-          width: nodeWidth, height: nodeHeight
-        });
-      });
-    });
-
-    return { width, height, nodeMap, activeRegions: Array.from(activeRegions), regionNamesMap };
-  }, [layers, data.agents]);
+    return { width: mapWidth, height: mapHeight, nodeMap, activeRegions: Array.from(activeRegions), regionNamesMap };
+  }, [layers, data, config, GEO_REGIONS]);
 
   if (!data || !data.agents) {
-    return <div className="topology-empty">Loading dashboard data...</div>;
+    return <div style={{ display: 'grid', placeItems: 'center', height: '100%', color: 'var(--text-secondary)' }}>加载拓扑数据中...</div>;
   }
 
-  if (!layers || visibleEdges.length === 0 || !layout) {
-    return <div className="topology-empty">Topology config requires topology.layers and edges.</div>;
+  if (!layers || visibleEdges.length === 0) {
+    return <div style={{ display: 'grid', placeItems: 'center', height: '100%', color: 'var(--text-secondary)' }}>暂无可用拓扑配置</div>;
   }
 
-  const activeEdges = activeNodeId
-    ? visibleEdges.filter((edge) => edge.from === activeNodeId || edge.to === activeNodeId)
+  const effectiveActiveNodeId = hoveredNodeId || activeNodeId;
+  const activeEdges = effectiveActiveNodeId
+    ? visibleEdges.filter((edge) => edge.from === effectiveActiveNodeId || edge.to === effectiveActiveNodeId)
     : visibleEdges;
   const activeEdgeKeys = new Set(activeEdges.map((edge) => `${edge.from}->${edge.to}`));
-  const activeStats = activeNodeId ? data.agents[activeNodeId] : null;
-  const activeLabel = activeNodeId ? getNodeLabel(activeNodeId, activeStats) : '';
-  const activeLatencies = activeNodeId
-    ? activeEdges
-      .map((edge) => data.latencies?.[`${edge.from}->${edge.to}`])
-      .filter((latency) => latency && typeof latency.ping === 'number')
-    : [];
-  const averageLatency = activeLatencies.length
-    ? Math.round(activeLatencies.reduce((sum, latency) => sum + latency.ping, 0) / activeLatencies.length)
-    : 0;
-  const issueCount = activeNodeId
-    ? activeEdges.filter((edge) => {
-      const state = getLatencyState(data.latencies?.[`${edge.from}->${edge.to}`]);
-      return state === 'warning' || state === 'critical';
-    }).length
-    : 0;
+  const connectedNodeIds = new Set();
+  activeEdges.forEach((edge) => {
+    connectedNodeIds.add(edge.from);
+    connectedNodeIds.add(edge.to);
+  });
 
-  const spotlightEdgeKey = hoveredEdge?.key || pinnedEdgeKey;
-  const spotlightEdge = spotlightEdgeKey
-    ? visibleEdges.find((edge) => `${edge.from}->${edge.to}` === spotlightEdgeKey)
+  const spotlightEdge = hoveredAlertEdge
+    ? visibleEdges.find((e) => `${e.from}->${e.to}` === hoveredAlertEdge || hoveredAlertEdge.key === `${e.from}->${e.to}`)
     : null;
-  const issueSlots = new Map();
-  const issueGroups = new Map();
-  const issueEdges = visibleEdges.filter((edge) => {
-    const state = getLatencyState(data.latencies?.[`${edge.from}->${edge.to}`]);
-    return state === 'warning' || state === 'critical';
-  });
-  const denseIssueMode = issueEdges.length >= 3;
-  const outgoingByNode = new Map();
-  visibleEdges.forEach((edge) => {
-    const key = `${edge.from}->${edge.to}`;
-    const measuredLatency = data.latencies?.[key];
-    const hasMeasurement = measuredLatency && (typeof measuredLatency.ping === 'number' || measuredLatency.ping === 'fail');
-    const latency = hasMeasurement ? measuredLatency : { ping: 0, loss: 0 };
-    const group = outgoingByNode.get(edge.from) || [];
-    group.push({ edge, key, latency, state: hasMeasurement ? getLatencyState(latency) : 'unknown' });
-    outgoingByNode.set(edge.from, group);
-  });
-  const worstOutgoingByNode = new Map();
-  outgoingByNode.forEach((routes, nodeId) => {
-    const worst = [...routes].sort((a, b) => {
-      const aScore = a.latency.ping === 'fail' ? Number.MAX_SAFE_INTEGER : a.latency.ping;
-      const bScore = b.latency.ping === 'fail' ? Number.MAX_SAFE_INTEGER : b.latency.ping;
-      return bScore - aScore || (b.latency.loss || 0) - (a.latency.loss || 0);
-    })[0];
-    worstOutgoingByNode.set(nodeId, { ...worst, routeCount: routes.length });
-  });
-  visibleEdges.forEach((edge) => {
-    const key = `${edge.from}->${edge.to}`;
-    const state = getLatencyState(data.latencies?.[key]);
-    if (state !== 'warning' && state !== 'critical') return;
-    const from = layout.nodeMap.get(edge.from);
-    const to = layout.nodeMap.get(edge.to);
-    if (!from || !to) return;
-    const midpointX = (from.x + from.width + to.x) / 2;
-    const midpointY = (from.y + from.height / 2 + to.y + to.height / 2) / 2;
-    const collisionBucket = `${Math.round(midpointX / 90)}:${Math.round(midpointY / 28)}`;
-    const group = issueGroups.get(collisionBucket) || [];
-    group.push(key);
-    issueGroups.set(collisionBucket, group);
-  });
-  issueGroups.forEach((keys) => keys.forEach((key, index) => issueSlots.set(key, { index, count: keys.length })));
-  const handleNodeClick = (nodeId) => {
-    // [CAUTION] Local UI state mutation only; keep selection idempotent across polling refreshes.
-    setActiveNodeId((current) => current === nodeId ? null : nodeId);
-    setHoveredEdge(null);
-    setPinnedEdgeKey(null);
-  };
 
-  const handleNodeKeyDown = (event, nodeId) => {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    event.preventDefault();
-    handleNodeClick(nodeId);
-  };
+  const currentHoveredEdge = hoveredAlertEdge
+    ? visibleEdges.find((e) => `${e.from}->${e.to}` === (hoveredAlertEdge.key || hoveredAlertEdge))
+    : hoveredEdge;
+
+  const currentPinnedEdge = pinnedEdgeKey
+    ? visibleEdges.find((e) => `${e.from}->${e.to}` === pinnedEdgeKey)
+    : null;
+
+  const selectedEdge = currentHoveredEdge || currentPinnedEdge;
+
+  const issueEdges = useMemo(() => {
+    return visibleEdges.filter((edge) => {
+      const key = `${edge.from}->${edge.to}`;
+      const state = getLatencyState(data.latencies?.[key]);
+      return state === 'warning' || state === 'critical';
+    });
+  }, [visibleEdges, data.latencies]);
+
+  // Compute worst outgoing latencies for 2D map node badges
+  const worstOutgoingByNode = new Map();
+  visibleEdges.forEach((edge) => {
+    const key = `${edge.from}->${edge.to}`;
+    const latency = data.latencies?.[key];
+    if (!latency) return;
+    const state = getLatencyState(latency);
+    const existing = worstOutgoingByNode.get(edge.from);
+    const score = (lat) => (lat?.ping === 'fail' ? 10000 : lat?.ping || 0);
+    if (!existing || score(latency) > score(existing.latency)) {
+      worstOutgoingByNode.set(edge.from, { edge, key, latency, state, routeCount: (existing?.routeCount || 0) + 1 });
+    }
+  });
 
   const showEdgeTooltip = (event, edge, key, latency, state) => {
-    const shell = event.currentTarget.closest('.route-matrix-shell').getBoundingClientRect();
-    // [CAUTION] Local pointer state only; tooltip position is clamped inside the topology panel.
+    const rect = event.currentTarget.closest('.route-matrix-shell').getBoundingClientRect();
     setHoveredEdge({
-      key,
-      x: Math.min(event.clientX - shell.left + 14, shell.width - 220),
-      y: event.clientY - shell.top + 14,
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top - 50,
+      key: key || `${edge.from}->${edge.to}`,
+      from: edge.from,
+      to: edge.to,
       route: `${getNodeLabel(edge.from, data.agents[edge.from], config)} → ${getNodeLabel(edge.to, data.agents[edge.to], config)}`,
       latency,
       state,
-      showTooltip: denseIssueMode || state === 'healthy' || state === 'unknown'
+      showTooltip: true
     });
   };
 
-  const [portalTarget, setPortalTarget] = useState(null);
+  const handleNodeClick = (nodeId) => {
+    setPinnedEdgeKey(null);
+    if (activeNodeId === nodeId) {
+      setActiveNodeId(null);
+      return;
+    }
+    setActiveNodeId(nodeId);
+    if (isRealUuid(nodeId) && data.agents[nodeId] && onNodeDetail) {
+      onNodeDetail(data.agents[nodeId]);
+    }
+  };
 
-  useEffect(() => {
-    setPortalTarget(document.getElementById('issue-tray-portal'));
-  }, []);
+  const handleEdgeClick = (edgeKey) => {
+    setActiveNodeId(null);
+    setPinnedEdgeKey((current) => (current === edgeKey ? null : edgeKey));
+  };
 
   const clearNodeFocus = () => {
-    // [CAUTION] Local visual selection only; monitoring data is not mutated.
     setActiveNodeId(null);
     setHoveredEdge(null);
     setPinnedEdgeKey(null);
   };
+
   return (
-    <div className="route-matrix-shell">
+    <div className="route-matrix-shell" style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div 
         className="route-matrix-scroll custom-scrollbar"
-        style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}
+        style={{ position: 'relative', width: '100%', height: '100%', overflow: 'auto', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
       >
-        
-        {/* Vector Background Map */}
-        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0.7 }}>
-          <ComposableMap 
-            projection={mapProjection} 
-            width={layout.width} 
-            height={layout.height} 
-            style={{ width: '100%', height: '100%' }}
-            viewBox={`0 0 ${layout.width} ${layout.height}`}
+        {/* MOBILE VIEW: Layered Matrix View */}
+        {isMobile && layeredLayout && (
+          <svg
+            className="route-matrix-canvas"
+            viewBox={`0 0 ${layeredLayout.width} ${layeredLayout.height}`}
+            style={{ width: '100%', maxWidth: `${layeredLayout.width}px`, height: 'auto', minHeight: '380px' }}
+            onClick={clearNodeFocus}
           >
-            <ZoomableGroup zoom={1} maxZoom={5} translateExtent={[[0, 0], [layout.width, layout.height]]}>
-              <Geographies geography={topoData}>
-              {({ geographies }) =>
-                geographies.map((geo) => {
-                  const countryName = geo.properties.name;
-                  const activeRegion = GEO_REGIONS.find(r => r.country === countryName && layout.activeRegions.includes(r.id));
-                  const isHighlighted = !!activeRegion;
-                  
-                  return (
-                    <Geography
-                      key={geo.rsmKey}
-                      geography={geo}
-                      fill={isHighlighted ? activeRegion.color : 'rgba(255,255,255,0.08)'}
-                      stroke={isHighlighted ? activeRegion.glow : 'rgba(255,255,255,0.25)'}
-                      strokeWidth={isHighlighted ? 1.5 : 0.5}
-                      style={{
-                        default: { outline: 'none', filter: isHighlighted ? `drop-shadow(0 0 16px ${activeRegion.glow})` : 'none', opacity: isHighlighted ? 0.7 : 1 },
-                        hover: { outline: 'none', fill: isHighlighted ? activeRegion.color : 'rgba(255,255,255,0.12)' },
-                        pressed: { outline: 'none' }
-                      }}
-                      onMouseEnter={(e) => {
-                        if (isHighlighted) {
-                          const rect = e.currentTarget.closest('.route-matrix-shell').getBoundingClientRect();
-                          setHoveredMapRegion({
-                            x: e.clientX - rect.left,
-                            y: e.clientY - rect.top - 40,
-                            label: activeRegion.label || activeRegion.country,
-                            nodes: layout.regionNamesMap.get(activeRegion.id) || []
-                          });
-                        }
-                      }}
-                      onMouseMove={(e) => {
-                        if (isHighlighted && hoveredMapRegion) {
-                          const rect = e.currentTarget.closest('.route-matrix-shell').getBoundingClientRect();
-                          setHoveredMapRegion(prev => ({ ...prev, x: e.clientX - rect.left, y: e.clientY - rect.top - 40 }));
-                        }
-                      }}
-                      onMouseLeave={() => setHoveredMapRegion(null)}
-                    />
-                  );
-                })
-              }
-            </Geographies>
-          <defs>
-            <marker id="arrow-healthy" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-              <path d="M0,0 L0,6 L6,3 z" fill="rgba(16, 185, 129, 0.8)" />
-            </marker>
-            <marker id="arrow-warning" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-              <path d="M0,0 L0,6 L6,3 z" fill="rgba(245, 158, 11, 0.8)" />
-            </marker>
-            <marker id="arrow-critical" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-              <path d="M0,0 L0,6 L6,3 z" fill="rgba(239, 68, 68, 0.8)" />
-            </marker>
-            <marker id="arrow-unknown" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-              <path d="M0,0 L0,6 L6,3 z" fill="rgba(255, 255, 255, 0.3)" />
-            </marker>
-          </defs>
+            <defs>
+              <marker id="arrow-healthy" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="rgba(16, 185, 129, 0.8)" /></marker>
+              <marker id="arrow-warning" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="rgba(245, 158, 11, 0.8)" /></marker>
+              <marker id="arrow-critical" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="rgba(239, 68, 68, 0.8)" /></marker>
+              <marker id="arrow-unknown" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="rgba(255, 255, 255, 0.3)" /></marker>
+            </defs>
 
-          {/* Glowing Map Regions */}
-          <g className="route-geo-regions" style={{ pointerEvents: 'none' }}>
-            {GEO_REGIONS.map(region => {
-              if (region.color === 'transparent') return null;
-              if (!layout.activeRegions.includes(region.id)) return null;
-              return (
-                <ellipse 
-                  key={`region-${region.id}`} 
-                  cx={region.x + 18} 
-                  cy={region.y + 24} 
-                  rx="90" 
-                  ry="60" 
-                  fill={region.glow} 
-                  style={{ filter: 'blur(40px)', opacity: 0.25 }} 
-                />
-              );
-            })}
-          </g>
+            {/* Layer Headers */}
+            <g className="route-svg-headers">
+              {layers.map((layer, index) => {
+                const x = LAYER_VIEWPORT.paddingX + (index * LAYER_VIEWPORT.defaultLayerGap) + (LAYER_VIEWPORT.nodeWidth / 2);
+                return (
+                  <text
+                    key={`layer-hdr-${index}`}
+                    x={x}
+                    y={LAYER_VIEWPORT.paddingTop - 18}
+                    textAnchor="middle"
+                    fill="var(--text-secondary)"
+                    style={{ fontSize: '12px', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}
+                  >
+                    {layer.name || `第 ${index + 1} 层`}
+                  </text>
+                );
+              })}
+            </g>
 
-          {/* Route Edges */}
-          <g className="route-svg-edges">
-            {visibleEdges.map((edge, edgeIndex) => {
-              const from = layout.nodeMap.get(edge.from);
-              const to = layout.nodeMap.get(edge.to);
-              if (!from || !to) return null;
+            {/* Route Edges */}
+            <g className="route-svg-edges">
+              {visibleEdges.map((edge) => {
+                const fromNode = layeredLayout.nodeMap.get(edge.from);
+                const toNode = layeredLayout.nodeMap.get(edge.to);
+                if (!fromNode || !toNode) return null;
 
-              const key = `${edge.from}->${edge.to}`;
-              const latency = data.latencies ? data.latencies[key] : null;
-              const state = getLatencyState(latency);
-              const isFocusDimmed = activeNodeId && !activeEdgeKeys.has(key);
-              const isHoverDimmed = spotlightEdgeKey && spotlightEdgeKey !== key;
-              const isSpotlight = spotlightEdgeKey === key;
-              
-              // Map List Hover Logic
-              const isListHoverDimmed = hoveredNodeId && (edge.from !== hoveredNodeId && edge.to !== hoveredNodeId);
-              const isListHoverSpotlight = hoveredNodeId && (edge.from === hoveredNodeId || edge.to === hoveredNodeId);
-              
-              // Alert List Hover Logic
-              const isAlertHoverDimmed = hoveredAlertEdge && hoveredAlertEdge.key !== key;
-              const isAlertHoverSpotlight = hoveredAlertEdge && hoveredAlertEdge.key === key;
-              
-              const isDimmed = isFocusDimmed || isHoverDimmed || isListHoverDimmed || isAlertHoverDimmed;
-              const isHighlighted = isSpotlight || isListHoverSpotlight || isAlertHoverSpotlight;
-              
-              const isRightToLeft = from.x > to.x;
-              const x1 = isRightToLeft ? from.x : from.x + from.width;
-              const y1 = from.y + (from.height / 2);
-              const x2 = isRightToLeft ? to.x + to.width : to.x;
-              const y2 = to.y + (to.height / 2);
-              const label = getLatencyLabel(latency);
-              const labelWidth = Math.max(44, (label.length * 7) + 16);
-              const issueSlot = issueSlots.get(key);
-              const labelX = ((x1 + x2) / 2) - (labelWidth / 2);
-              const labelY = ((y1 + y2) / 2) - 10 + (issueSlot ? (issueSlot.index - ((issueSlot.count - 1) / 2)) * 16 : 0);
-              const showPersistentLabel = label && !activeNodeId && !denseIssueMode && (state === 'warning' || state === 'critical');
-              const path = getLinePath(x1, y1, x2, y2);
+                const edgeKey = `${edge.from}->${edge.to}`;
+                const latency = data.latencies?.[edgeKey];
+                const state = getLatencyState(latency);
+                const isPinned = pinnedEdgeKey === edgeKey;
+                const isHovered = (hoveredEdge && `${hoveredEdge.from}->${hoveredEdge.to}` === edgeKey) || (hoveredAlertEdge === edgeKey || hoveredAlertEdge?.key === edgeKey);
+                const isSelected = isPinned || isHovered;
+                const isDimmed = (effectiveActiveNodeId && !activeEdgeKeys.has(edgeKey)) || (pinnedEdgeKey && !isPinned);
 
-              return (
-                <g key={`${key}-${edgeIndex}`} className={`route-edge route-edge-${state} ${isDimmed && !isListHoverDimmed && !isAlertHoverDimmed ? 'is-focus-dimmed' : ''} ${isHoverDimmed ? 'is-hover-dimmed' : ''} ${isSpotlight ? 'is-spotlight' : ''}`} style={{ opacity: isDimmed ? 0.1 : (isHighlighted ? 1 : undefined), transition: 'opacity 0.2s ease', strokeWidth: isAlertHoverSpotlight ? '2px' : undefined, filter: isAlertHoverSpotlight ? 'drop-shadow(0 0 6px var(--critical))' : undefined }}>
-                  <path className="route-edge-path" d={path} markerEnd={`url(#arrow-${state})`} />
-                  <path className="route-edge-flow" d={path} />
-                  <path
-                    className="route-edge-hit"
-                    d={path}
-                    onMouseMove={(event) => showEdgeTooltip(event, edge, key, latency, state)}
-                    onMouseLeave={() => setHoveredEdge(null)}
-                    onFocus={() => setHoveredEdge({ key })}
-                    onBlur={() => setHoveredEdge(null)}
-                    tabIndex="0"
-                    role="button"
-                    aria-label={`${getNodeLabel(edge.from, data.agents[edge.from], config)} 到 ${getNodeLabel(edge.to, data.agents[edge.to], config)}，${label || '无延迟数据'}`}
-                  />
-                  {showPersistentLabel && (
-                    <g className="route-edge-label" transform={`translate(${labelX} ${labelY})`}>
-                      <rect width={labelWidth} height="20" rx="5" />
-                      <text x={labelWidth / 2} y="14">{label}</text>
-                    </g>
-                  )}
-                </g>
-              );
-            })}
-          </g>
+                const x1 = fromNode.x + fromNode.width;
+                const y1 = fromNode.y + (fromNode.height / 2);
+                const x2 = toNode.x;
+                const y2 = toNode.y + (toNode.height / 2);
 
-          <g className="route-node-worst-badges">
-            {Array.from(worstOutgoingByNode.entries()).map(([nodeId, worst]) => {
-              const rect = layout.nodeMap.get(nodeId);
-              if (!rect) return null;
-              const value = worst.latency.ping === 'fail' ? 'FAIL' : `${worst.latency.ping}ms`;
-              const text = worst.routeCount > 1 ? `MAX ${value}` : value;
-              const width = Math.max(48, (text.length * 6) + 16);
-              const x = rect.x + 18 - (width / 2);
-              const y = rect.y + 60;
-              return (
-                <g
-                  key={`worst-${nodeId}`}
-                  className={`route-node-worst-badge ${worst.state} ${pinnedEdgeKey === worst.key ? 'is-pinned' : ''}`}
-                  role="button"
-                  tabIndex="0"
-                  aria-label={`${getNodeLabel(nodeId, data.agents[nodeId], config)} 最差下游 ${text}`}
-                  aria-pressed={pinnedEdgeKey === worst.key}
-                  onMouseMove={(event) => showEdgeTooltip(event, worst.edge, worst.key, worst.latency, worst.state)}
-                  onMouseLeave={() => setHoveredEdge(null)}
-                  onFocus={() => setHoveredEdge({ key: worst.key })}
-                  onBlur={() => setHoveredEdge(null)}
-                  onClick={() => setPinnedEdgeKey((current) => current === worst.key ? null : worst.key)}
-                >
-                  <rect x={x} y={y} width={width} height="18" rx="4" />
-                  <text x={x + (width / 2)} y={y + 12}>{text}</text>
-                </g>
-              );
-            })}
-          </g>
-          <g className="route-svg-nodes">
-            {layers.flatMap((layer, layerIndex) => {
-              const theme = LAYER_THEMES[layerIndex] || 'default';
-              const nodes = Array.isArray(layer.nodes) ? layer.nodes : [];
-
-              return nodes.map((nodeId) => {
-                const rect = layout.nodeMap.get(nodeId);
-                if (!rect) return null;
-                const stats = data.agents[nodeId];
-                const label = getNodeLabel(nodeId, stats);
-                const isUuid = isRealUuid(nodeId);
-                const isVirtual = !isUuid || rect.regionId === 'entry' || rect.regionId === 'target';
-                const isOnline = stats && stats.status !== 'offline';
-                const isActive = activeNodeId === nodeId;
-                const isEdgeEndpoint = spotlightEdge && (spotlightEdge.from === nodeId || spotlightEdge.to === nodeId);
-                const isInactive = activeNodeId && activeNodeId !== nodeId && !activeEdges.some((edge) => edge.from === nodeId || edge.to === nodeId);
-                
-                // Map List Hover Logic
-                const isListHoverDimmed = hoveredNodeId && hoveredNodeId !== nodeId && !visibleEdges.some(e => (e.from === hoveredNodeId && e.to === nodeId) || (e.to === hoveredNodeId && e.from === nodeId));
-                const isListHoverSpotlight = hoveredNodeId === nodeId;
-                
-                // Alert List Hover Logic
-                const isAlertHoverDimmed = hoveredAlertEdge && !visibleEdges.some(e => hoveredAlertEdge.key === `${e.from}->${e.to}` && (e.from === nodeId || e.to === nodeId));
-                const isAlertHoverSpotlight = hoveredAlertEdge && visibleEdges.some(e => hoveredAlertEdge.key === `${e.from}->${e.to}` && (e.from === nodeId || e.to === nodeId));
-                
-                const isNodeDimmed = isListHoverDimmed || isAlertHoverDimmed;
-                const isNodeHighlighted = isListHoverSpotlight || isAlertHoverSpotlight;
-                const iconX = rect.x + 13;
-                const iconY = rect.y + ((rect.height - 15) / 2);
-                const textX = rect.x + (rect.width / 2) + 8;
-                const textY = rect.y + (rect.height / 2) + 1;
-                const statusX = rect.x + rect.width - 13;
-                const statusY = rect.y + (rect.height / 2);
+                const path = getBezierPath(x1, y1, x2, y2);
+                const midX = (x1 + x2) / 2;
+                const midY = (y1 + y2) / 2;
 
                 return (
                   <g
-                    key={`matrix-node-${nodeId}`}
-                    className={`route-svg-node route-layer-${theme} ${isActive ? 'is-active' : ''} ${isInactive ? 'is-inactive' : ''} ${isEdgeEndpoint ? 'is-edge-endpoint' : ''} ${isVirtual ? 'is-virtual' : ''}`}
-                    style={{ opacity: isNodeDimmed ? 0.2 : 1, filter: isNodeHighlighted ? (isAlertHoverSpotlight ? 'drop-shadow(0 0 12px var(--critical))' : 'drop-shadow(0 0 12px var(--accent-cyan))') : 'none', transform: isNodeHighlighted ? 'scale(1.1)' : 'scale(1)', transformOrigin: `${rect.x + rect.width / 2}px ${rect.y + rect.height / 2}px`, transition: 'all 0.2s ease' }}
-                    role="button"
-                    tabIndex="0"
-                    aria-label={label}
-                    aria-pressed={isActive}
-                    onClick={() => handleNodeClick(nodeId)}
-                    onKeyDown={(event) => handleNodeKeyDown(event, nodeId)}
+                    key={`layered-edge-${edgeKey}`}
+                    className={`route-svg-edge-group route-edge-${state} ${isSelected ? 'is-selected' : ''}`}
+                    style={{ opacity: isDimmed ? 0.15 : 1, transition: 'opacity 0.25s' }}
+                    onClick={(e) => { e.stopPropagation(); handleEdgeClick(edgeKey); }}
+                    onMouseEnter={() => setHoveredEdge(edge)}
+                    onMouseLeave={() => setHoveredEdge(null)}
                   >
-                    {isVirtual ? (
-                      <>
-                        <circle className="route-svg-node-box" cx={rect.x + rect.width / 2} cy={rect.y + rect.height / 2} r="14" />
-                        {rect.regionId === 'entry' ? (
-                          <User className="route-svg-node-icon" x={rect.x + rect.width / 2 - 8} y={rect.y + rect.height / 2 - 8} size={16} />
-                        ) : rect.regionId === 'target' ? (
-                          <Cloud className="route-svg-node-icon" x={rect.x + rect.width / 2 - 8} y={rect.y + rect.height / 2 - 8} size={16} />
-                        ) : (
-                          <Globe2 className="route-svg-node-icon" x={rect.x + rect.width / 2 - 8} y={rect.y + rect.height / 2 - 8} size={16} />
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        {/* Server Rack Body */}
-                        <rect className="route-svg-node-box" x={rect.x} y={rect.y} width={rect.width} height={rect.height} rx="3" />
-                        
-                        {/* Blades */}
-                        <rect className="route-svg-node-blade" x={rect.x + 3} y={rect.y + 5} width={rect.width - 6} height="4" rx="1" fill="rgba(255,255,255,0.15)" />
-                        <rect className="route-svg-node-blade" x={rect.x + 3} y={rect.y + 14} width={rect.width - 6} height="4" rx="1" fill="rgba(255,255,255,0.15)" />
-                        <rect className="route-svg-node-blade" x={rect.x + 3} y={rect.y + 23} width={rect.width - 6} height="4" rx="1" fill="rgba(255,255,255,0.15)" />
+                    <path d={path} fill="none" stroke="transparent" strokeWidth="20" style={{ cursor: 'pointer' }} />
+                    <path className="route-edge-path" d={path} markerEnd={`url(#arrow-${state})`} />
+                    <path className="route-edge-flow" d={path} />
 
-                        {/* Active LEDs */}
-                        <circle cx={rect.x + rect.width - 5} cy={rect.y + 7} r="1" fill="var(--healthy)" opacity={isOnline ? 0.9 : 0.2} />
-                        <circle cx={rect.x + rect.width - 5} cy={rect.y + 16} r="1" fill="var(--healthy)" opacity={isOnline ? 0.9 : 0.2} />
-                        <circle cx={rect.x + rect.width - 5} cy={rect.y + 25} r="1" fill="var(--healthy)" opacity={isOnline ? 0.9 : 0.2} />
-                      </>
-                    )}
-                    
-                    {/* Floating Label */}
-                    <text className="route-svg-node-name" x={rect.x + rect.width / 2} y={rect.y - 12}>{trimNodeLabel(label)}</text>
-                    
-                    {/* Status Badge */}
-                    {isUuid && (
-                      <g transform={`translate(${rect.x + rect.width - 4}, ${rect.y + rect.height - 4})`} className="route-svg-node-status-group">
-                        <circle className={`route-svg-node-status ${isOnline ? 'online' : 'offline'}`} cx="0" cy="0" r="8" />
-                        {isOnline ? (
-                          <path d="M-3,0.5 L-1,2.5 L3,-1.5" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                        ) : (
-                          <path d="M-2.5,-2.5 L2.5,2.5 M-2.5,2.5 L2.5,-2.5" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" />
-                        )}
+                    {edge.latencyTask && (
+                      <g transform={`translate(${midX}, ${midY})`} style={{ cursor: 'pointer' }}>
+                        <rect
+                          x="-28" y="-9" width="56" height="18" rx="9"
+                          fill="rgba(15, 20, 30, 0.9)"
+                          stroke={state === 'healthy' ? 'rgba(16, 185, 129, 0.5)' : state === 'warning' ? 'rgba(245, 158, 11, 0.5)' : state === 'critical' ? 'rgba(239, 68, 68, 0.5)' : 'rgba(255, 255, 255, 0.15)'}
+                          strokeWidth="1"
+                        />
+                        <text
+                          x="0" y="4" textAnchor="middle"
+                          fill={state === 'healthy' ? '#10b981' : state === 'warning' ? '#f59e0b' : state === 'critical' ? '#ef4444' : '#a1a1aa'}
+                          style={{ fontSize: '10px', fontWeight: 600, fontFamily: 'monospace' }}
+                        >
+                          {getLatencyLabel(latency)}
+                        </text>
                       </g>
                     )}
                   </g>
                 );
-              });
-            })}
-          </g>
-          </ZoomableGroup>
-          </ComposableMap>
-        </div>
+              })}
+            </g>
+
+            {/* Layered Nodes */}
+            <g className="route-svg-nodes">
+              {layers.map((layer) => {
+                const nodes = Array.isArray(layer.nodes) ? layer.nodes : [];
+                return nodes.map((nodeId) => {
+                  const nodePos = layeredLayout.nodeMap.get(nodeId);
+                  if (!nodePos) return null;
+
+                  const isReal = isRealUuid(nodeId);
+                  const stats = isReal ? data.agents[nodeId] : null;
+                  const rawName = getNodeLabel(nodeId, stats, config);
+                  const label = trimNodeLabel(rawName);
+                  const flag = stats?.flag || config?.node_metadata?.[nodeId]?.flag || (isReal ? '🌐' : '⚡');
+                  const isOnline = isReal ? stats?.status === 'online' : true;
+                  const isActive = effectiveActiveNodeId === nodeId;
+                  const isConnected = connectedNodeIds.has(nodeId);
+                  const isDimmed = effectiveActiveNodeId && !isActive && !isConnected;
+                  const cpu = stats?.cpu || 0;
+                  const ram = stats?.ram_total ? Math.round((stats.ram_used / stats.ram_total) * 100) : 0;
+
+                  return (
+                    <g
+                      key={`layered-node-${nodeId}`}
+                      className={`route-svg-node ${isActive ? 'is-active' : ''}`}
+                      transform={`translate(${nodePos.x}, ${nodePos.y})`}
+                      style={{ cursor: 'pointer', opacity: isDimmed ? 0.25 : 1, transition: 'all 0.25s' }}
+                      onClick={(e) => { e.stopPropagation(); handleNodeClick(nodeId); }}
+                    >
+                      <rect
+                        x="0" y="0" width={nodePos.width} height={nodePos.height} rx="10"
+                        fill={isActive ? 'rgba(20, 30, 50, 0.95)' : 'rgba(15, 20, 32, 0.85)'}
+                        stroke={isActive ? 'var(--accent-cyan)' : 'rgba(255, 255, 255, 0.12)'}
+                        strokeWidth={isActive ? 2 : 1}
+                      />
+                      <g transform="translate(10, 20)">
+                        <text x="0" y="0" style={{ fontSize: '13px' }}>{flag}</text>
+                        <circle cx="20" cy="-4" r="3" fill={isOnline ? '#10b981' : '#ef4444'} />
+                        <text x="30" y="0" fill="#ffffff" style={{ fontSize: '11px', fontWeight: 600 }}>{label}</text>
+                      </g>
+                      {isReal && isOnline ? (
+                        <g transform="translate(10, 42)">
+                          <text x="0" y="0" fill="var(--text-secondary)" style={{ fontSize: '9px', fontFamily: 'monospace' }}>
+                            CPU <tspan fill="#fff">{cpu}%</tspan> | RAM <tspan fill="#fff">{ram}%</tspan>
+                          </text>
+                        </g>
+                      ) : isReal && !isOnline ? (
+                        <g transform="translate(10, 42)">
+                          <text x="0" y="0" fill="#ef4444" style={{ fontSize: '9px', fontWeight: 600 }}>节点离线</text>
+                        </g>
+                      ) : (
+                        <g transform="translate(10, 42)">
+                          <text x="0" y="0" fill="var(--text-muted)" style={{ fontSize: '9px' }}>目标服务</text>
+                        </g>
+                      )}
+                    </g>
+                  );
+                });
+              })}
+            </g>
+          </svg>
+        )}
+
+        {/* DESKTOP VIEW: Full 2D Map View with Spotlights & Hover Badges */}
+        {!isMobile && mapLayout && (
+          <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '520px' }}>
+            <ComposableMap projection={mapProjection} width={mapLayout.width} height={mapLayout.height} style={{ width: '100%', height: '100%' }}>
+              <ZoomableGroup zoom={1} maxZoom={5} translateExtent={[[0, 0], [mapLayout.width, mapLayout.height]]}>
+                <Geographies geography={topoData}>
+                  {({ geographies }) => geographies.map((geo) => {
+                    const countryName = geo.properties.name;
+                    const activeRegion = GEO_REGIONS.find(r => r.country === countryName && mapLayout.activeRegions.includes(r.id));
+                    const isHighlighted = !!activeRegion;
+                    return (
+                      <Geography
+                        key={geo.rsmKey}
+                        geography={geo}
+                        fill={isHighlighted ? activeRegion.color : 'rgba(255,255,255,0.06)'}
+                        stroke={isHighlighted ? activeRegion.glow : 'rgba(255,255,255,0.18)'}
+                        strokeWidth={isHighlighted ? 1.2 : 0.5}
+                        style={{
+                          default: { outline: 'none', filter: isHighlighted ? `drop-shadow(0 0 16px ${activeRegion.glow})` : 'none', opacity: isHighlighted ? 0.7 : 1 },
+                          hover: { outline: 'none', fill: isHighlighted ? activeRegion.color : 'rgba(255,255,255,0.12)' },
+                          pressed: { outline: 'none' }
+                        }}
+                        onMouseEnter={(e) => {
+                          if (isHighlighted) {
+                            const rect = e.currentTarget.closest('.route-matrix-shell').getBoundingClientRect();
+                            setHoveredMapRegion({
+                              x: e.clientX - rect.left,
+                              y: e.clientY - rect.top - 40,
+                              label: activeRegion.label || activeRegion.country,
+                              nodes: mapLayout.regionNamesMap?.get(activeRegion.id) || []
+                            });
+                          }
+                        }}
+                        onMouseMove={(e) => {
+                          if (isHighlighted && hoveredMapRegion) {
+                            const rect = e.currentTarget.closest('.route-matrix-shell').getBoundingClientRect();
+                            setHoveredMapRegion(prev => ({ ...prev, x: e.clientX - rect.left, y: e.clientY - rect.top - 40 }));
+                          }
+                        }}
+                        onMouseLeave={() => setHoveredMapRegion(null)}
+                      />
+                    );
+                  })}
+                </Geographies>
+
+                <defs>
+                  <marker id="arrow-healthy-map" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="rgba(16, 185, 129, 0.8)" /></marker>
+                  <marker id="arrow-warning-map" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="rgba(245, 158, 11, 0.8)" /></marker>
+                  <marker id="arrow-critical-map" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="rgba(239, 68, 68, 0.8)" /></marker>
+                  <marker id="arrow-unknown-map" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="rgba(255, 255, 255, 0.3)" /></marker>
+                </defs>
+
+                {/* Glowing Map Regions */}
+                <g className="route-geo-regions" style={{ pointerEvents: 'none' }}>
+                  {GEO_REGIONS.map(region => {
+                    if (region.color === 'transparent' || !mapLayout.activeRegions.includes(region.id)) return null;
+                    return (
+                      <ellipse 
+                        key={`region-${region.id}`} 
+                        cx={region.x + 18} 
+                        cy={region.y + 24} 
+                        rx="90" 
+                        ry="60" 
+                        fill={region.glow} 
+                        style={{ filter: 'blur(40px)', opacity: 0.25 }} 
+                      />
+                    );
+                  })}
+                </g>
+
+                {/* Map Edges */}
+                <g className="route-svg-edges">
+                  {visibleEdges.map((edge) => {
+                    const fromNode = mapLayout.nodeMap.get(edge.from);
+                    const toNode = mapLayout.nodeMap.get(edge.to);
+                    if (!fromNode || !toNode) return null;
+
+                    const edgeKey = `${edge.from}->${edge.to}`;
+                    const latency = data.latencies?.[edgeKey];
+                    const state = getLatencyState(latency);
+                    const isPinned = pinnedEdgeKey === edgeKey;
+                    
+                    const isEdgeDirectHover = hoveredEdge && (hoveredEdge.key === edgeKey || `${hoveredEdge.from}->${hoveredEdge.to}` === edgeKey);
+                    const isAlertHoverSpotlight = hoveredAlertEdge && (hoveredAlertEdge === edgeKey || hoveredAlertEdge?.key === edgeKey);
+                    const isListHoverSpotlight = hoveredNodeId && (edge.from === hoveredNodeId || edge.to === hoveredNodeId);
+                    const isNodeFocusSpotlight = activeNodeId && (edge.from === activeNodeId || edge.to === activeNodeId);
+                    
+                    const isSpotlight = isEdgeDirectHover || isAlertHoverSpotlight || isListHoverSpotlight || isNodeFocusSpotlight || isPinned;
+                    const hasActiveFilter = !!(hoveredEdge || hoveredAlertEdge || hoveredNodeId || activeNodeId || pinnedEdgeKey);
+                    const isDimmed = hasActiveFilter && !isSpotlight;
+
+                    const x1 = fromNode.x + 18;
+                    const y1 = fromNode.y + 16;
+                    const x2 = toNode.x + 18;
+                    const y2 = toNode.y + 16;
+                    const path = getMapArcPath(x1, y1, x2, y2);
+
+                    return (
+                      <g
+                        key={`map-edge-${edgeKey}`}
+                        className={`route-edge route-edge-${state} ${isSpotlight ? 'is-spotlight' : ''}`}
+                        style={{
+                          opacity: isSpotlight ? 1 : (isDimmed ? 0.08 : 0.85),
+                          filter: isAlertHoverSpotlight
+                            ? 'drop-shadow(0 0 10px var(--critical))'
+                            : (isEdgeDirectHover || isListHoverSpotlight
+                              ? 'drop-shadow(0 0 10px var(--accent-cyan))'
+                              : undefined),
+                          transition: 'all 0.2s ease'
+                        }}
+                        onClick={(e) => { e.stopPropagation(); handleEdgeClick(edgeKey); }}
+                        onMouseEnter={(event) => showEdgeTooltip(event, edge, edgeKey, latency, state)}
+                        onMouseMove={(event) => showEdgeTooltip(event, edge, edgeKey, latency, state)}
+                        onMouseLeave={() => setHoveredEdge(null)}
+                      >
+                        <path d={path} fill="none" stroke="transparent" strokeWidth="20" style={{ cursor: 'pointer' }} />
+                        <path className="route-edge-path" d={path} markerEnd={`url(#arrow-${state}-map)`} />
+                        <path className="route-edge-flow" d={path} />
+                      </g>
+                    );
+                  })}
+                </g>
+
+                {/* Worst Latency Badges on Nodes */}
+                <g className="route-node-worst-badges">
+                  {Array.from(worstOutgoingByNode.entries()).map(([nodeId, worst]) => {
+                    const rect = mapLayout.nodeMap.get(nodeId);
+                    if (!rect) return null;
+                    const value = worst.latency.ping === 'fail' ? 'FAIL' : `${worst.latency.ping}ms`;
+                    const text = worst.routeCount > 1 ? `MAX ${value}` : value;
+                    const width = Math.max(48, (text.length * 6) + 16);
+                    const x = rect.x + 18 - (width / 2);
+                    const y = rect.y + 50;
+                    return (
+                      <g
+                        key={`worst-${nodeId}`}
+                        className={`route-node-worst-badge ${worst.state} ${pinnedEdgeKey === worst.key ? 'is-pinned' : ''}`}
+                        onClick={(e) => { e.stopPropagation(); setPinnedEdgeKey(current => current === worst.key ? null : worst.key); }}
+                      >
+                        <rect x={x} y={y} width={width} height="18" rx="4" />
+                        <text x={x + (width / 2)} y={y + 12}>{text}</text>
+                      </g>
+                    );
+                  })}
+                </g>
+
+                {/* Map Nodes */}
+                <g className="route-svg-nodes">
+                  {layers.flatMap((layer, layerIndex) => {
+                    const theme = LAYER_THEMES[layerIndex] || 'default';
+                    const nodes = Array.isArray(layer.nodes) ? layer.nodes : [];
+                    return nodes.map((nodeId) => {
+                      const rect = mapLayout.nodeMap.get(nodeId);
+                      if (!rect) return null;
+
+                      const stats = data.agents?.[nodeId];
+                      const isReal = isRealUuid(nodeId);
+                      const rawName = getNodeLabel(nodeId, stats, config);
+                      const label = trimNodeLabel(rawName);
+                      const isOnline = stats ? stats.status !== 'offline' : true;
+                      
+                      const isListHoverSpotlight = hoveredNodeId === nodeId;
+                      const isAlertHoverSpotlight = hoveredAlertEdge && (
+                        (typeof hoveredAlertEdge === 'string' && (hoveredAlertEdge.startsWith(`${nodeId}->`) || hoveredAlertEdge.endsWith(`->${nodeId}`))) ||
+                        (hoveredAlertEdge?.key && (hoveredAlertEdge.key.startsWith(`${nodeId}->`) || hoveredAlertEdge.key.endsWith(`->${nodeId}`)))
+                      );
+                      const isEdgeHoverSpotlight = hoveredEdge && (hoveredEdge.from === nodeId || hoveredEdge.to === nodeId);
+                      const isNodeActive = activeNodeId === nodeId;
+                      const isConnectedToActiveNode = activeNodeId && activeEdges.some(e => e.from === nodeId || e.to === nodeId);
+                      
+                      const isNodeHighlighted = isListHoverSpotlight || isAlertHoverSpotlight || isEdgeHoverSpotlight || isNodeActive;
+                      const hasActiveFilter = !!(hoveredNodeId || hoveredAlertEdge || hoveredEdge || activeNodeId);
+                      const isNodeDimmed = hasActiveFilter && !isNodeHighlighted && !isConnectedToActiveNode;
+
+                      return (
+                        <g
+                          key={`matrix-node-${nodeId}`}
+                          className={`route-svg-node route-layer-${theme} ${isNodeActive ? 'is-active' : ''}`}
+                          style={{
+                            opacity: isNodeDimmed ? 0.2 : 1,
+                            filter: isNodeHighlighted ? (isAlertHoverSpotlight ? 'drop-shadow(0 0 14px var(--critical))' : 'drop-shadow(0 0 14px var(--accent-cyan))') : 'none',
+                            transform: isNodeHighlighted ? 'scale(1.15)' : 'scale(1)',
+                            transformOrigin: `${rect.x + rect.width / 2}px ${rect.y + rect.height / 2}px`,
+                            transition: 'all 0.2s ease',
+                            cursor: 'pointer'
+                          }}
+                          onClick={(e) => { e.stopPropagation(); handleNodeClick(nodeId); }}
+                        >
+                          {!isReal ? (
+                            <>
+                              <rect className="route-svg-node-box" x={rect.x} y={rect.y} width={rect.width} height={rect.height} rx="8" fill="rgba(20,25,35,0.9)" stroke="rgba(255,255,255,0.2)" />
+                              <g transform={`translate(${rect.x + 10}, ${rect.y + 8})`}>
+                                <Cloud size={16} color="var(--accent-purple)" />
+                              </g>
+                            </>
+                          ) : (
+                            <>
+                              {/* Server Rack Body */}
+                              <rect className="route-svg-node-box" x={rect.x} y={rect.y} width={rect.width} height={rect.height} rx="4" />
+                              
+                              {/* Blades */}
+                              <rect className="route-svg-node-blade" x={rect.x + 3} y={rect.y + 5} width={rect.width - 6} height="4" rx="1" fill="rgba(255,255,255,0.15)" />
+                              <rect className="route-svg-node-blade" x={rect.x + 3} y={rect.y + 14} width={rect.width - 6} height="4" rx="1" fill="rgba(255,255,255,0.15)" />
+                              <rect className="route-svg-node-blade" x={rect.x + 3} y={rect.y + 23} width={rect.width - 6} height="4" rx="1" fill="rgba(255,255,255,0.15)" />
+
+                              {/* Active LEDs */}
+                              <circle cx={rect.x + rect.width - 5} cy={rect.y + 7} r="1" fill="var(--healthy)" opacity={isOnline ? 0.9 : 0.2} />
+                              <circle cx={rect.x + rect.width - 5} cy={rect.y + 16} r="1" fill="var(--healthy)" opacity={isOnline ? 0.9 : 0.2} />
+                              <circle cx={rect.x + rect.width - 5} cy={rect.y + 25} r="1" fill="var(--healthy)" opacity={isOnline ? 0.9 : 0.2} />
+                            </>
+                          )}
+                          
+                          {/* Floating Label */}
+                          <text className="route-svg-node-name" x={rect.x + rect.width / 2} y={rect.y - 10}>{label}</text>
+                          
+                          {/* Status Badge */}
+                          {isReal && (
+                            <g transform={`translate(${rect.x + rect.width - 4}, ${rect.y + rect.height - 4})`} className="route-svg-node-status-group">
+                              <circle className={`route-svg-node-status ${isOnline ? 'online' : 'offline'}`} cx="0" cy="0" r="7" />
+                              {isOnline ? (
+                                <path d="M-2.5,0.5 L-1,2 L2.5,-1.5" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                              ) : (
+                                <path d="M-2,-2 L2,2 M-2,2 L2,-2" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" />
+                              )}
+                            </g>
+                          )}
+                        </g>
+                      );
+                    });
+                  })}
+                </g>
+              </ZoomableGroup>
+            </ComposableMap>
+          </div>
+        )}
       </div>
+
+      {/* Hover Edge Tooltip on 2D Map */}
       {hoveredEdge?.x !== undefined && hoveredEdge.showTooltip && (
         <div className={`route-tooltip route-tooltip-${hoveredEdge.state}`} style={{ left: hoveredEdge.x, top: hoveredEdge.y }}>
           <span>{hoveredEdge.route}</span>
@@ -655,6 +765,8 @@ const SegmentTopology = ({ data, onNodeDetail, config, hoveredNodeId, hoveredAle
           <small>{hoveredEdge.latency?.ping === 'fail' ? '探测失败' : `丢包 ${hoveredEdge.latency?.loss || 0}%`}</small>
         </div>
       )}
+
+      {/* Hover Map Region Tooltip on 2D Map */}
       {hoveredMapRegion && (
         <div className="route-tooltip route-tooltip-healthy" style={{ left: hoveredMapRegion.x, top: hoveredMapRegion.y, pointerEvents: 'none', zIndex: 100 }}>
           <span>{hoveredMapRegion.label} 在线节点</span>
@@ -664,98 +776,126 @@ const SegmentTopology = ({ data, onNodeDetail, config, hoveredNodeId, hoveredAle
           </small>
         </div>
       )}
+
+      {/* Focus & Edge Detail Bottom Bar */}
+      {(selectedEdge || effectiveActiveNodeId) && (
+        <div
+          className="topology-focus-bar"
+          style={{
+            position: 'absolute',
+            bottom: '16px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'rgba(15, 20, 32, 0.92)',
+            border: '1px solid var(--border-light)',
+            backdropFilter: 'blur(16px)',
+            borderRadius: '16px',
+            padding: '10px 18px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '14px',
+            boxShadow: '0 12px 32px rgba(0,0,0,0.6)',
+            zIndex: 40,
+            maxWidth: '90%'
+          }}
+        >
+          {selectedEdge ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff' }}>
+                <span style={{ fontWeight: 600 }}>{getNodeLabel(selectedEdge.from, data.agents[selectedEdge.from], config)}</span>
+                <ArrowRight size={14} color="var(--accent-cyan)" />
+                <span style={{ fontWeight: 600 }}>{getNodeLabel(selectedEdge.to, data.agents[selectedEdge.to], config)}</span>
+              </div>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
+                延迟: <strong style={{ color: getLatencyState(data.latencies?.[`${selectedEdge.from}->${selectedEdge.to}`]) === 'healthy' ? '#10b981' : '#f59e0b' }}>
+                  {getLatencyLabel(data.latencies?.[`${selectedEdge.from}->${selectedEdge.to}`])}
+                </strong>
+              </div>
+            </>
+          ) : data.agents?.[effectiveActiveNodeId] ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff' }}>
+                <span style={{ fontSize: '16px' }}>{data.agents[effectiveActiveNodeId].flag}</span>
+                <span style={{ fontWeight: 600 }}>{data.agents[effectiveActiveNodeId].name}</span>
+              </div>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                CPU: <strong>{data.agents[effectiveActiveNodeId].cpu}%</strong> | RAM: <strong>{data.agents[effectiveActiveNodeId].ram_used}MB</strong>
+              </div>
+            </>
+          ) : (
+            <div style={{ fontSize: '13px', color: '#fff', fontWeight: 600 }}>
+              {getNodeLabel(effectiveActiveNodeId, null, config)}
+            </div>
+          )}
+
+          <button
+            onClick={clearNodeFocus}
+            style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', display: 'grid', placeItems: 'center', padding: '4px' }}
+            title="关闭 (ESC)"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* Portal for Bottom-Right Issue Tray */}
       {(() => {
-        if (!portalTarget || activeNodeId || !denseIssueMode) return null;
+        if (!portalTarget || activeNodeId || issueEdges.length === 0) return null;
         
         return createPortal(
-          <section className="route-issue-tray glass-panel" aria-label="异常线路" style={{ position: 'relative', bottom: 'auto', left: 'auto', right: 'auto', width: '100%', margin: '0', background: 'rgba(255,255,255,0.02)' }}>
-            <header>
-              <div><span>异常线路</span><small>悬停查看路径</small></div>
-              <b>{issueEdges.length}</b>
-            </header>
-            <div className="route-issue-grid custom-scrollbar" style={{ gridTemplateColumns: '1fr', maxHeight: '250px', overflowY: 'auto' }}>
+          <div className="glass-panel" style={{ padding: '20px', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: '260px', width: '100%', boxSizing: 'border-box' }}>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '16px', letterSpacing: '0.1em', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--warning)', fontWeight: 600 }}>
+                异常线路 ({issueEdges.length})
+              </span>
+              <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>悬停聚焦</span>
+            </div>
+            <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', paddingRight: '4px' }}>
               {issueEdges.map((edge) => {
                 const key = `${edge.from}->${edge.to}`;
                 const latency = data.latencies?.[key];
                 const state = getLatencyState(latency);
+                const isPinned = pinnedEdgeKey === key;
+                const isCritical = state === 'critical';
+                
                 return (
-                  <button
-                    type="button"
+                  <div
                     key={key}
-                    className={`focus-route-item issue-route-item ${state} ${pinnedEdgeKey === key ? 'is-pinned' : ''}`}
-                    onMouseEnter={() => setHoveredEdge({ key })}
+                    className={`issue-route-item ${isPinned ? 'is-pinned' : ''}`}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '10px 12px',
+                      background: isCritical ? 'rgba(239, 68, 68, 0.08)' : 'rgba(245, 158, 11, 0.08)',
+                      borderLeft: `2px solid ${isCritical ? 'var(--critical)' : 'var(--warning)'}`,
+                      borderRadius: '0 8px 8px 0',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      border: isPinned ? '1px solid var(--accent-cyan)' : '1px solid transparent',
+                      boxShadow: isCritical ? 'inset 0 0 12px rgba(239, 68, 68, 0.02)' : 'none'
+                    }}
+                    onMouseEnter={() => setHoveredEdge({ key, state })}
                     onMouseLeave={() => setHoveredEdge(null)}
-                    onFocus={() => setHoveredEdge({ key })}
-                    onBlur={() => setHoveredEdge(null)}
                     onClick={() => setPinnedEdgeKey((current) => current === key ? null : key)}
-                    aria-pressed={pinnedEdgeKey === key}
                   >
-                    <i aria-hidden="true" />
-                    <span>{getNodeLabel(edge.from, data.agents[edge.from], config)} → {getNodeLabel(edge.to, data.agents[edge.to], config)}</span>
-                    <strong>{getLatencyLabel(latency)}</strong>
-                  </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden', minWidth: 0 }}>
+                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: isCritical ? 'var(--critical)' : 'var(--warning)', flexShrink: 0 }} />
+                      <span style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {getNodeLabel(edge.from, data.agents[edge.from], config)} ➔ {getNodeLabel(edge.to, data.agents[edge.to], config)}
+                      </span>
+                    </div>
+                    <strong style={{ color: isCritical ? 'var(--critical)' : 'var(--warning)', fontSize: '11px', fontFamily: 'monospace', flexShrink: 0, marginLeft: '8px' }}>
+                      {getLatencyLabel(latency)}
+                    </strong>
+                  </div>
                 );
               })}
             </div>
-          </section>,
+          </div>,
           portalTarget
         );
       })()}
-      {activeNodeId && (
-        <div className="topology-focus-bar" aria-live="polite">
-          <div className="focus-identity">
-            <span className="focus-pulse" aria-hidden="true" />
-            <div>
-              <span>聚焦节点</span>
-              <strong>{activeLabel}</strong>
-            </div>
-          </div>
-          <div className="focus-metrics">
-            <span><b>{activeEdges.length}</b> 条关联线路</span>
-            <span><b>{averageLatency === null ? '--' : `${averageLatency} ms`}</b> 平均延迟</span>
-            <span className={issueCount ? 'has-issue' : ''}><b>{issueCount}</b> 条异常</span>
-          </div>
-          <div className="focus-actions">
-            {activeStats ? (
-              <button type="button" className="focus-detail-button" onClick={() => onNodeDetail?.(activeStats)}>
-                查看节点详情
-                <ArrowRight size={15} />
-              </button>
-            ) : (
-              <span className="focus-virtual-note">虚拟入口节点</span>
-            )}
-            <button type="button" className="focus-clear-button" onClick={clearNodeFocus} aria-label="取消节点聚焦">
-              <X size={16} />
-            </button>
-          </div>
-          <div className="focus-route-list" role="list" aria-label={`${activeLabel} 的关联线路`}>
-            {activeEdges.map((edge) => {
-              const key = `${edge.from}->${edge.to}`;
-              const latency = data.latencies?.[key];
-              const state = getLatencyState(latency);
-              const label = getLatencyLabel(latency);
-              return (
-                <button
-                  type="button"
-                  role="listitem"
-                  key={key}
-                  className={`focus-route-item ${state} ${pinnedEdgeKey === key ? 'is-pinned' : ''}`}
-                  onMouseEnter={() => setHoveredEdge({ key })}
-                  onMouseLeave={() => setHoveredEdge(null)}
-                  onFocus={() => setHoveredEdge({ key })}
-                  onBlur={() => setHoveredEdge(null)}
-                  onClick={() => setPinnedEdgeKey((current) => current === key ? null : key)}
-                  aria-pressed={pinnedEdgeKey === key}
-                >
-                  <i aria-hidden="true" />
-                  <span>{getNodeLabel(edge.from, data.agents[edge.from], config)} → {getNodeLabel(edge.to, data.agents[edge.to], config)}</span>
-                  <strong>{label || '无拨测'}</strong>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
     </div>
   );
 };

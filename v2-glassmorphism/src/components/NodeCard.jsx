@@ -32,20 +32,20 @@ const NodeCard = ({ stats, onClick }) => {
   
   return (
     <div 
+      className="node-card glass-panel"
       onClick={onClick}
       style={{
-        background: 'rgba(255,255,255,0.03)',
-        border: '1px solid var(--border)',
-        borderRadius: '16px',
-        padding: '20px',
+        padding: '16px 18px',
         cursor: 'pointer',
         display: 'flex',
         flexDirection: 'column',
-        gap: '16px',
+        gap: '14px',
         transition: 'all 0.2s ease',
-        boxShadow: '0 4px 20px rgba(0,0,0,0.2)'
+        boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
+        width: '100%',
+        boxSizing: 'border-box'
       }}
-      onMouseOver={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
+      onMouseOver={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
       onMouseOut={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.transform = 'translateY(0)'; }}
     >
       {/* Header */}
